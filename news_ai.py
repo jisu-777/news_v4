@@ -4,7 +4,6 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, END
 from googlenews import GoogleNews
 import operator
-import dotenv
 import json
 import re
 import os

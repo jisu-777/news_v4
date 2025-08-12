@@ -12,16 +12,84 @@ class GoogleNews:
         """GoogleNews 클래스를 초기화합니다."""
         self.base_url = "https://news.google.com/rss"
 
-    def search_by_keyword(self, keyword: Optional[str] = None, k: int = 20) -> List[Dict[str, str]]:
+    def search_by_keyword(self, keyword: Optional[str] = None, k: int = 50, 
+                         trusted_press: Optional[Dict] = None) -> List[Dict[str, str]]:
         """
         키워드로 뉴스를 검색합니다.
 
         Args:
             keyword (Optional[str]): 검색할 키워드 (기본값: None)
-            k (int): 검색할 뉴스의 최대 개수 (기본값: 20)
+            k (int): 검색할 뉴스의 최대 개수 (기본값: 50)
+            trusted_press (Optional[Dict]): 신뢰할 수 있는 언론사 목록
 
         Returns:
             List[Dict[str, str]]: URL, 제목, 언론사, 발행일을 포함한 딕셔너리 리스트
+        """
+        # 신뢰할 수 있는 언론사가 지정된 경우 해당 언론사에서만 검색
+        if trusted_press:
+            return self._search_trusted_press(keyword, k, trusted_press)
+        else:
+            # 기존 로직: 전체 언론사에서 검색
+            return self._search_all_press(keyword, k)
+
+    def _search_trusted_press(self, keyword: str, k: int, 
+                             trusted_press: Dict) -> List[Dict[str, str]]:
+        """
+        신뢰할 수 있는 언론사에서만 키워드로 뉴스 검색
+        
+        Args:
+            keyword: 검색할 키워드
+            k: 최대 결과 수
+            trusted_press: 신뢰할 수 있는 언론사 목록
+            
+        Returns:
+            신뢰할 수 있는 언론사에서 수집된 뉴스 리스트
+        """
+        all_results = []
+        
+        # 각 신뢰할 수 있는 언론사별로 검색
+        for press_name, aliases in trusted_press.items():
+            print(f"언론사 '{press_name}'에서 '{keyword}' 검색 중...")
+            
+            for alias in aliases:
+                try:
+                    # 언론사별 검색 URL 생성 (site: 제한자 사용)
+                    search_query = f"{keyword} site:{alias}"
+                    encoded_query = quote(search_query)
+                    url = f"{self.base_url}/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
+                    
+                    # 해당 언론사에서 뉴스 검색
+                    press_news = feedparser.parse(url)
+                    
+                    if press_news.entries:
+                        # 각 언론사당 균등하게 분배
+                        max_per_press = max(1, k // len(trusted_press))
+                        
+                        for entry in press_news.entries[:max_per_press]:
+                            all_results.append({
+                                "url": entry.link,
+                                "content": entry.title,
+                                "press": press_name,  # 메인 언론사명 사용
+                                "date": entry.get('published', '날짜 정보 없음'),
+                                "source_alias": alias  # 실제 검색에 사용된 별칭
+                            })
+                        
+                        print(f"  - '{alias}'에서 {len(press_news.entries[:max_per_press])}개 수집")
+                        break  # 첫 번째 성공한 별칭에서 수집 완료
+                        
+                except Exception as e:
+                    print(f"  - '{alias}' 검색 중 오류: {str(e)}")
+                    continue
+        
+        # 최대 개수 제한
+        final_results = all_results[:k]
+        print(f"신뢰할 수 있는 언론사에서 총 {len(final_results)}개 뉴스 수집 완료")
+        
+        return final_results
+
+    def _search_all_press(self, keyword: Optional[str], k: int) -> List[Dict[str, str]]:
+        """
+        기존 로직: 전체 언론사에서 뉴스 검색
         """
         # URL 생성
         if keyword:

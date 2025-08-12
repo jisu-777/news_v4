@@ -18,19 +18,13 @@ import docx
 from docx.shared import Pt, RGBColor, Inches
 import io
 from urllib.parse import urlparse
-from googlenews import GoogleNews
-from news_ai import (
-    collect_news,
-    filter_valid_press,
-    filter_excluded_news,
-    group_and_select_news,
-    evaluate_importance,
-)
+from news_service import NewsAnalysisService
 
 # Import centralized configuration
 from config import (
     COMPANY_CATEGORIES,
     COMPANY_KEYWORD_MAP,
+    COMPANY_GROUP_MAPPING,
     TRUSTED_PRESS_ALIASES,
     ADDITIONAL_PRESS_ALIASES,
     SYSTEM_PROMPT_1,
@@ -49,6 +43,28 @@ from config import (
 
 # 한국 시간대(KST) 정의
 KST = timezone(timedelta(hours=9))
+
+
+def parse_press_config(press_dict_str: str) -> Dict[str, List[str]]:
+    """UI에서 설정한 언론사 문자열을 딕셔너리로 파싱하는 함수"""
+    press_config = {}
+    if isinstance(press_dict_str, str) and press_dict_str.strip():
+        try:
+            lines = press_dict_str.strip().split('\n')
+            for line in lines:
+                line = line.strip()
+                if line and ': ' in line:
+                    press_name, aliases_str = line.split(':', 1)
+                    try:
+                        # 문자열 형태의 리스트를 실제 리스트로 변환
+                        aliases = eval(aliases_str.strip())
+                        press_config[press_name.strip()] = aliases
+                    except Exception as e:
+                        print(f"언론사 파싱 실패: {line}, 오류: {str(e)}")
+        except Exception as e:
+            print(f"전체 언론사 파싱 실패: {str(e)}")
+    
+    return press_config
 
 
 def format_date(date_str):
@@ -490,8 +506,6 @@ with col2:
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 1단계: 제외 판단 기준
-
 # 기업 선택 섹션 제목
 st.sidebar.markdown("### 🏢 분석할 기업 선택")
 
@@ -503,58 +517,104 @@ selected_category = st.sidebar.radio(
     help="분석할 기업 카테고리를 선택하세요. Anchor(핵심), Growth(성장), Whitespace(신규) 중에서 선택할 수 있습니다."
 )
 
-# 선택된 카테고리에 따라 COMPANIES 업데이트
-COMPANIES = COMPANY_CATEGORIES[selected_category]
+# 선택된 카테고리에 따라 그룹 목록 가져오기
+GROUPS = COMPANY_CATEGORIES[selected_category]
 
-# 새로운 기업 추가 섹션
+# 그룹별로 기업 선택
+selected_companies = []
+st.sidebar.markdown("**그룹별로 분석할 기업을 선택하세요:**")
+
+for group in GROUPS:
+    if group in COMPANY_GROUP_MAPPING:
+        companies_in_group = COMPANY_GROUP_MAPPING[group]
+        
+        # 그룹별로 expander 생성
+        with st.sidebar.expander(f"📁 {group} ({len(companies_in_group)}개 기업)", expanded=True):
+            st.markdown(f"**{group} 그룹 기업들:**")
+            
+            # 그룹 내 기업들을 체크박스로 선택
+            selected_in_group = st.multiselect(
+                f"{group} 그룹에서 선택",
+                options=companies_in_group,
+                default=companies_in_group[:3] if len(companies_in_group) > 3 else companies_in_group,  # 최대 3개 기본 선택
+                max_selections=min(5, len(companies_in_group)),  # 그룹당 최대 5개
+                help=f"{group} 그룹에서 분석할 기업을 선택하세요. 최대 {min(5, len(companies_in_group))}개까지 선택 가능합니다.",
+                key=f"group_{group}"
+            )
+            
+            # 선택된 기업들을 전체 목록에 추가
+            selected_companies.extend(selected_in_group)
+            
+            # 선택된 기업 수 표시
+            if selected_in_group:
+                st.success(f"✅ {group}: {len(selected_in_group)}개 기업 선택됨")
+            else:
+                st.info(f"ℹ️ {group}: 선택된 기업 없음")
+
+# 전체 선택된 기업 수 표시
+if selected_companies:
+    st.sidebar.success(f"🎯 **총 {len(selected_companies)}개 기업 선택됨**")
+    st.sidebar.markdown("**선택된 기업들:**")
+    for company in selected_companies:
+        st.sidebar.markdown(f"• {company}")
+else:
+    st.sidebar.warning("⚠️ 분석할 기업을 선택해주세요!")
+
+# 새로운 기업 추가 섹션 (그룹 선택 포함)
+st.sidebar.markdown("---")
+st.sidebar.markdown("### ➕ 새로운 기업 추가")
+
+new_company_group = st.sidebar.selectbox(
+    "새 기업을 추가할 그룹 선택",
+    options=GROUPS,
+    help="새로운 기업을 추가할 그룹을 선택하세요."
+)
+
 new_company = st.sidebar.text_input(
-    "새로운 기업 추가",
+    "새로운 기업명",
     value="",
     help="분석하고 싶은 기업명을 입력하고 Enter를 누르세요. (예: 네이버, 카카오, 현대중공업 등)"
 )
 
 # 새로운 기업 추가 로직 수정
-if new_company and new_company not in COMPANIES:
-    # 현재 선택된 카테고리에 기업 추가
-    COMPANY_CATEGORIES[selected_category].append(new_company)
-    # 세션 상태의 카테고리도 업데이트
-    if 'company_categories' in st.session_state:
-        st.session_state.company_categories[selected_category].append(new_company)
-    # COMPANIES 리스트도 업데이트
-    COMPANIES = COMPANY_CATEGORIES[selected_category]
-    # 새 기업에 대한 기본 연관 키워드 설정 (기업명 자체만 포함)
-    COMPANY_KEYWORD_MAP[new_company] = [new_company]
-    # 세션 상태도 함께 업데이트
-    if 'company_keyword_map' in st.session_state:
-        st.session_state.company_keyword_map[new_company] = [new_company]
-
-# 키워드 선택을 multiselect로 변경
-selected_companies = st.sidebar.multiselect(
-    "분석할 기업을 선택하세요 (최대 10개)",
-    options=COMPANIES,
-    default=COMPANIES[:10],  # 처음 10개 기업만 기본 선택으로 설정
-    max_selections=10,
-    help="분석하고자 하는 기업을 선택하세요. 한 번에 최대 10개까지 선택 가능합니다."
-)
+if new_company and new_company not in selected_companies:
+    # 선택된 그룹에 기업 추가
+    if new_company_group in COMPANY_GROUP_MAPPING:
+        COMPANY_GROUP_MAPPING[new_company_group].append(new_company)
+        
+        # 세션 상태도 업데이트
+        if 'company_group_mapping' not in st.session_state:
+            st.session_state.company_group_mapping = COMPANY_GROUP_MAPPING.copy()
+        else:
+            st.session_state.company_group_mapping[new_company_group].append(new_company)
+        
+        # 새 기업에 대한 기본 연관 키워드 설정 (기업명 자체만 포함)
+        COMPANY_KEYWORD_MAP[new_company] = [new_company]
+        
+        # 세션 상태도 함께 업데이트
+        if 'company_keyword_map' not in st.session_state:
+            st.session_state.company_keyword_map = COMPANY_KEYWORD_MAP.copy()
+        else:
+            st.session_state.company_keyword_map[new_company] = [new_company]
+        
+        st.sidebar.success(f"✅ '{new_company}'이(가) '{new_company_group}' 그룹에 추가되었습니다!")
+        
+        # 페이지 새로고침을 위한 버튼
+        if st.sidebar.button("🔄 페이지 새로고침", key="refresh_page"):
+            st.rerun()
 
 # 연관 키워드 관리 섹션
 st.sidebar.markdown("### 🔍 연관 키워드 관리")
 st.sidebar.markdown("각 기업의 연관 키워드를 확인하고 편집할 수 있습니다.")
 
-# 세션 상태에 COMPANY_KEYWORD_MAP 및 COMPANY_CATEGORIES 저장 (초기화)
+# 세션 상태에 COMPANY_KEYWORD_MAP 및 COMPANY_GROUP_MAPPING 저장 (초기화)
 if 'company_keyword_map' not in st.session_state:
     st.session_state.company_keyword_map = COMPANY_KEYWORD_MAP.copy()
     
-# 세션 상태에 회사 카테고리 저장 (초기화)
-if 'company_categories' not in st.session_state:
-    st.session_state.company_categories = COMPANY_CATEGORIES.copy()
-else:
-    # 세션에 저장된 카테고리 정보가 있으면 사용
-    COMPANY_CATEGORIES = st.session_state.company_categories
-    # 선택된 카테고리에 따라 COMPANIES 다시 업데이트
-    COMPANIES = COMPANY_CATEGORIES[selected_category]
+if 'company_group_mapping' not in st.session_state:
+    st.session_state.company_group_mapping = COMPANY_GROUP_MAPPING.copy()
 
-# 연관 키워드 UI 개선
+# 연관 키워드 UI 개선 (선택된 기업이 있을 때만 표시)
 if selected_companies:
     # 선택된 기업 중에서 관리할 기업 선택
     company_to_edit = st.sidebar.selectbox(
@@ -598,13 +658,16 @@ if selected_companies:
 
 # 미리보기 버튼 - 모든 검색어 확인
 with st.sidebar.expander("🔍 전체 검색 키워드 미리보기"):
-    for i, company in enumerate(selected_companies, 1):
-        # 세션 상태에서 키워드 가져오기
-        company_keywords = st.session_state.company_keyword_map.get(company, [company])
-        st.markdown(f"**{i}. {company}**")
-        # 연관 키워드 표시
-        for j, kw in enumerate(company_keywords, 1):
-            st.write(f"  {j}) {kw}")
+    if selected_companies:
+        for i, company in enumerate(selected_companies, 1):
+            # 세션 상태에서 키워드 가져오기
+            company_keywords = st.session_state.company_keyword_map.get(company, [company])
+            st.markdown(f"**{i}. {company}**")
+            # 연관 키워드 표시
+            for j, kw in enumerate(company_keywords, 1):
+                st.write(f"  {j}) {kw}")
+    else:
+        st.info("먼저 분석할 기업을 선택해주세요.")
 
 # 선택된 키워드들을 통합 (검색용)
 keywords = []
@@ -623,7 +686,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### 🎯 회사별 특화 기준 관리")
 st.sidebar.markdown("각 기업의 AI 분석 특화 기준을 확인하고 편집할 수 있습니다.")
 
-# 회사별 특화 기준 관리 UI
+# 회사별 특화 기준 관리 UI (선택된 기업이 있을 때만 표시)
 if selected_companies:
     # 선택된 기업 중에서 관리할 기업 선택
     company_to_manage = st.sidebar.selectbox(
@@ -726,6 +789,8 @@ if selected_companies:
             # 업데이트 버튼
             if st.sidebar.button("선택 기준 업데이트", key=f"update_selection_{company_to_manage}", on_click=update_selection_criteria):
                 pass
+else:
+    st.sidebar.info("먼저 분석할 기업을 선택해주세요.")
 
 # 미리보기 버튼 - 모든 회사별 특화 기준 확인
 with st.sidebar.expander("🔍 전체 회사별 특화 기준 미리보기"):
@@ -764,7 +829,7 @@ with st.sidebar.expander("🔍 전체 회사별 특화 기준 미리보기"):
             
             st.markdown("---")
     else:
-        st.info("기업을 먼저 선택해주세요.")
+        st.info("먼저 분석할 기업을 선택해주세요.")
 
 # 구분선 추가
 st.sidebar.markdown("---")
@@ -791,38 +856,12 @@ st.sidebar.markdown(f"""
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 검색 결과 수 - 고정 값으로 설정
-max_results = 100
+# 검색 결과 수 - 키워드당 50개로 설정 (신뢰할 수 있는 언론사에서만)
+max_results = 50
 
-# 시스템 프롬프트 설정
-st.sidebar.markdown("### 🤖 시스템 프롬프트")
-
-# 1단계: 제외 판단 시스템 프롬프트
-system_prompt_1 = st.sidebar.text_area(
-    "1단계: 제외 판단",
-    value=SYSTEM_PROMPT_1,
-    help="1단계 제외 판단에 사용되는 시스템 프롬프트를 설정하세요.",
-    key="system_prompt_1",
-    height=300
-)
-
-# 2단계: 그룹핑 시스템 프롬프트
-system_prompt_2 = st.sidebar.text_area(
-    "2단계: 그룹핑",
-    value=SYSTEM_PROMPT_2,
-    help="2단계 그룹핑에 사용되는 시스템 프롬프트를 설정하세요.",
-    key="system_prompt_2",
-    height=300
-)
-
-# 3단계: 중요도 평가 시스템 프롬프트
-system_prompt_3 = st.sidebar.text_area(
-    "3단계: 중요도 평가",
-    value=SYSTEM_PROMPT_3,
-    help="3단계 중요도 평가에 사용되는 시스템 프롬프트를 설정하세요.",
-    key="system_prompt_3",
-    height=300
-)
+# AI 프롬프트 설정 (사용자 편집 가능)
+st.sidebar.markdown("### 🤖 AI 프롬프트 설정")
+st.sidebar.info("AI 분석에 사용되는 프롬프트는 config.py에서 관리됩니다.")
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📋 1단계: 제외 판단 기준")
@@ -937,6 +976,12 @@ analysis_prompt = f"""
 
 # 메인 컨텐츠
 if st.button("뉴스 분석 시작", type="primary"):
+    # 뉴스 분석 서비스 초기화
+    news_service = NewsAnalysisService()
+    
+    # 유효 언론사 설정을 딕셔너리로 파싱
+    valid_press_config = parse_press_config(valid_press_dict)
+    
     # 이메일 미리보기를 위한 전체 내용 저장
     email_content = "[Client Intelligence]\n\n"
     
@@ -951,378 +996,69 @@ if st.button("뉴스 분석 시작", type="primary"):
             # 연관 키워드 표시
             st.write(f"'{company}' 연관 키워드로 검색 중: {', '.join(company_keywords)}")
             
-            # 사용자가 수정한 기준을 기본으로 하고, 해당 회사의 추가 특화 기준만 더함
-            base_exclusion = exclusion_criteria
-            base_duplicate = duplicate_handling
-            base_selection = selection_criteria
+            # 날짜/시간 객체 생성
+            start_dt = datetime.combine(start_date, start_time)
+            end_dt = datetime.combine(end_date, end_time)
             
-            # 해당 회사의 추가 특화 기준만 가져오기 (세션 상태에서)
-            # 세션 상태가 초기화되지 않은 경우를 위한 안전장치
-            if 'company_additional_exclusion_criteria' not in st.session_state:
-                st.session_state.company_additional_exclusion_criteria = COMPANY_ADDITIONAL_EXCLUSION_CRITERIA.copy()
-            if 'company_additional_duplicate_handling' not in st.session_state:
-                st.session_state.company_additional_duplicate_handling = COMPANY_ADDITIONAL_DUPLICATE_HANDLING.copy()
-            if 'company_additional_selection_criteria' not in st.session_state:
-                st.session_state.company_additional_selection_criteria = COMPANY_ADDITIONAL_SELECTION_CRITERIA.copy()
-                
-            company_additional_exclusion = st.session_state.company_additional_exclusion_criteria.get(company, "")
-            company_additional_duplicate = st.session_state.company_additional_duplicate_handling.get(company, "")
-            company_additional_selection = st.session_state.company_additional_selection_criteria.get(company, "")
-            
-            # 사용자 수정 기준 + 해당 회사 특화 기준 결합
-            enhanced_exclusion_criteria = base_exclusion + company_additional_exclusion
-            enhanced_duplicate_handling = base_duplicate + company_additional_duplicate  
-            enhanced_selection_criteria = base_selection + company_additional_selection
-            
-            # initial_state 설정 부분 직전에 valid_press_dict를 딕셔너리로 변환하는 코드 추가
-            # 텍스트 에어리어의 내용을 딕셔너리로 변환
-            valid_press_config = {}
+            # 뉴스 분석 서비스 호출 (신뢰할 수 있는 언론사에서만 수집)
             try:
-                # 문자열에서 딕셔너리 파싱
-                lines = valid_press_dict.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if line and ': ' in line:
-                        press_name, aliases_str = line.split(':', 1)
-                        try:
-                            # 문자열 형태의 리스트를 실제 리스트로 변환
-                            aliases = eval(aliases_str.strip())
-                            valid_press_config[press_name.strip()] = aliases
-                            print(f"[DEBUG] Valid press 파싱 성공: {press_name.strip()} -> {aliases}")
-                        except Exception as e:
-                            print(f"[DEBUG] Valid press 파싱 실패: {line}, 오류: {str(e)}")
+                analysis_result = news_service.analyze_news(
+                    keywords=company_keywords,
+                    start_date=start_dt,
+                    end_date=end_dt,
+                    companies=[company],
+                    trusted_press=valid_press_config  # 신뢰할 수 있는 언론사 전달
+                )
+                
+                # 결과 저장
+                all_results[company] = analysis_result
+                
+                # 결과 표시
+                st.success(f"'{company}' 분석 완료!")
+                st.write(f"수집된 뉴스: {analysis_result['collected_count']}개")
+                st.write(f"날짜 필터링 후: {analysis_result['date_filtered_count']}개")
+                st.write(f"언론사 필터링 후: {analysis_result['press_filtered_count']}개")
+                st.write(f"최종 선별: {len(analysis_result['final_selection'])}개")
+                
+                # 최종 선별된 뉴스 표시
+                if analysis_result['final_selection']:
+                    st.subheader(f"📰 {company} 최종 선별 뉴스")
+                    for j, news in enumerate(analysis_result['final_selection'], 1):
+                        with st.expander(f"{j}. {news.get('content', '제목 없음')}"):
+                            st.write(f"**언론사:** {news.get('press', '알 수 없음')}")
+                            st.write(f"**날짜:** {news.get('date', '날짜 정보 없음')}")
+                            st.write(f"**URL:** {news.get('url', '')}")
+                
             except Exception as e:
-                print(f"[DEBUG] Valid press 전체 파싱 실패: {str(e)}")
-                # 오류 발생 시 빈 딕셔너리 사용
-                valid_press_config = {}
-            
-            print(f"[DEBUG] 파싱된 valid_press_dict: {valid_press_config}")
-            
-            # 추가 언론사도 파싱
-            additional_press_config = {}
-            try:
-                # 문자열에서 딕셔너리 파싱
-                lines = additional_press_dict.strip().split('\n')
-                for line in lines:
-                    line = line.strip()
-                    if line and ': ' in line:
-                        press_name, aliases_str = line.split(':', 1)
-                        try:
-                            # 문자열 형태의 리스트를 실제 리스트로 변환
-                            aliases = eval(aliases_str.strip())
-                            additional_press_config[press_name.strip()] = aliases
-                            print(f"[DEBUG] Additional press 파싱 성공: {press_name.strip()} -> {aliases}")
-                        except Exception as e:
-                            print(f"[DEBUG] Additional press 파싱 실패: {line}, 오류: {str(e)}")
-            except Exception as e:
-                print(f"[DEBUG] Additional press 전체 파싱 실패: {str(e)}")
-                # 오류 발생 시 빈 딕셔너리 사용
-                additional_press_config = {}
-            
-            print(f"[DEBUG] 파싱된 additional_press_dict: {additional_press_config}")
-            
-            # 각 키워드별 상태 초기화
-            initial_state = {
-                "news_data": [], 
-                "filtered_news": [], 
-                "analysis": "", 
-                "keyword": company_keywords,  # 회사별 확장 키워드 리스트 전달
-                "model": selected_model,
-                "excluded_news": [],
-                "borderline_news": [],
-                "retained_news": [],
-                "grouped_news": [],
-                "final_selection": [],
-                # 회사별 enhanced 기준들 적용
-                "exclusion_criteria": enhanced_exclusion_criteria,
-                "duplicate_handling": enhanced_duplicate_handling,
-                "selection_criteria": enhanced_selection_criteria,
-                "system_prompt_1": system_prompt_1,
-                "user_prompt_1": "",
-                "llm_response_1": "",
-                "system_prompt_2": system_prompt_2,
-                "user_prompt_2": "",
-                "llm_response_2": "",
-                "system_prompt_3": system_prompt_3,
-                "user_prompt_3": "",
-                "llm_response_3": "",
-                "not_selected_news": [],
-                "original_news_data": [],
-                # 언론사 설정 추가 (파싱된 딕셔너리 사용)
-                "valid_press_dict": valid_press_config,
-                # 추가 언론사 설정 추가
-                "additional_press_dict": additional_press_config,
-                # 날짜 필터 정보 추가
-                "start_datetime": datetime.combine(start_date, start_time, KST),
-                "end_datetime": datetime.combine(end_date, end_time, KST)
-                #"start_datetime": start_datetime,
-                #"end_datetime": end_datetime
-            }
+                st.error(f"'{company}' 분석 중 오류 발생: {str(e)}")
+                continue
             
             
-            print(f"[DEBUG] start_datetime: {datetime.combine(start_date, start_time)}")
-            print(f"[DEBUG] end_datetime: {datetime.combine(end_date, end_time)}")
+            # 분석 완료 후 결과 요약
+            st.success(f"✅ {company} 분석 완료!")
             
-            # 1단계: 뉴스 수집
-            st.write("1단계: 뉴스 수집 중...")
-            state_after_collection = collect_news(initial_state)
-            
-            # 2단계: 유효 언론사 필터링
-            st.write("2단계: 유효 언론사 필터링 중...")
-            state_after_press_filter = filter_valid_press(state_after_collection)
-            
-            # 3단계: 제외 판단
-            st.write("3단계: 제외 판단 중...")
-            state_after_exclusion = filter_excluded_news(state_after_press_filter)
-            
-            # 4단계: 그룹핑
-            st.write("4단계: 그룹핑 중...")
-            state_after_grouping = group_and_select_news(state_after_exclusion)
-            
-            # 5단계: 중요도 평가
-            st.write("5단계: 중요도 평가 중...")
-            final_state = evaluate_importance(state_after_grouping)
-
-            # 6단계: 0개 선택 시 재평가 (개선된 코드)
-            if len(final_state["final_selection"]) == 0:
-                st.write("6단계: 선택된 뉴스가 없어 재평가를 시작합니다...")
-                
-                # 추가 언론사 설정 불러오기 (이미 파싱된 딕셔너리 사용)
-                additional_press = additional_press_config
-                
-                # 기존 유효 언론사에 추가 언론사 병합 (딕셔너리 병합)
-                expanded_valid_press_dict = {**valid_press_config, **additional_press}
-                
-                # 추가 언론사로 필터링한 뉴스 저장 (기존 뉴스와 구분)
-                additional_valid_news = []
-                
-                # 확장된 언론사 목록으로 원본 뉴스 재필터링
-                try:
-                    # 현재 필터링된 유효 언론사 뉴스 수집
-                    current_news_data = final_state.get("news_data", [])
-                    
-                    # 원본 뉴스 데이터 가져오기
-                    original_news_data = final_state.get("original_news_data", [])
-                    
-                    if expanded_valid_press_dict:
-                        # 확장된 언론사 목록으로 원본 뉴스 재필터링
-                        for news in original_news_data:
-                            # 이미 필터링된 뉴스는 제외
-                            if any(existing_news.get('url') == news.get('url') for existing_news in current_news_data):
-                                continue
-                                
-                            press = news.get("press", "").lower()
-                            url = news.get("url", "").lower()
-                            
-                            # 추가된 언론사 기준으로만 필터링
-                            is_valid = False
-                            for main_press, aliases in expanded_valid_press_dict.items():
-                                domain = urlparse(url).netloc.lower()
-                                # 더 유연한 매칭 적용
-                                if any(alias.lower() in press or press in alias.lower() for alias in aliases) or \
-                                   any(alias.lower() in domain or domain in alias.lower() for alias in aliases):
-                                    is_valid = True
-                                    break
-                            
-                            if is_valid:
-                                # 새 언론사 필터링된 뉴스임을 표시
-                                additional_valid_news.append(news)
-                    
-                    # 추가 유효 뉴스가 있으면 기존 news_data에 추가
-                    if additional_valid_news:
-                        st.success(f"추가 언론사 기준으로 {len(additional_valid_news)}개의 뉴스가 추가로 필터링되었습니다.")
-                        
-                        # 기존 뉴스 데이터와 병합
-                        combined_news = current_news_data + additional_valid_news
-                        reevaluation_state = final_state.copy()
-                        reevaluation_state["news_data"] = combined_news
-                        
-                        # 추가된 뉴스들에 대한 제외/유지 판단 재실행
-                        reevaluation_state = filter_excluded_news(reevaluation_state)
-                        
-                        # 그룹핑 재실행
-                        reevaluation_state = group_and_select_news(reevaluation_state)
-                    else:
-                        # 추가 뉴스가 없으면 원래 상태 복사
-                        reevaluation_state = final_state.copy()
-                        combined_news = current_news_data
-                except Exception as e:
-                    st.warning(f"추가 언론사 필터링 중 오류 발생: {str(e)}")
-                    reevaluation_state = final_state.copy()
-                    combined_news = final_state.get("news_data", [])
-                
-                # 확장된 유효 언론사 목록 문자열로 변환 (프롬프트용)
-                expanded_valid_press_str = "유효 언론사 목록:\n"
-                for press, aliases in expanded_valid_press_dict.items():
-                    expanded_valid_press_str += f"  * {press}: {aliases}\n"
-                
-                # 재평가 시스템 프롬프트 개선 - 모든 뉴스 데이터 포함
-                reevaluation_system_prompt = f"""
-                당신은 회계법인의 뉴스 분석 전문가입니다. 현재 선정된 뉴스가 없어 재평가가 필요합니다.
-                아래 4가지 방향으로 뉴스를 재검토하세요:
-
-                1. 언론사 필터링 기준 완화:
-                - 기존 유효 언론사 목록 외에도 다음 언론사의 기사를 포함하여 평가합니다:
-                  * 철강금속신문: 산업 전문지로 금속/철강 업계 소식에 특화됨
-                  * 에너지신문: 에너지 산업 전문 매체로 관련 기업 분석에 유용함
-                  * 이코노믹데일리: 경제 전문지로 추가적인 시각 제공
-
-                2. 제외 조건 재평가:
-                - 제외 기준을 유연하게 적용하여, 회계법인의 관점에서 재무적 관점으로 해석 가능한 기사들을 보류로 분류
-                - 특히 기업의 재정 혹은 전략적 변동과 연관된 기사를 보류로 전환
-
-                3. 중복 제거 재평가:
-                - 중복 기사 중에서도 언론사의 신뢰도나 기사 내용을 추가로 고려하여 가능한 경우 추가적으로 선택
-                - 재무적/전략적 관점에서 추가 정보를 제공하는 기사 우선 선택
-
-                4. 중요도 재평가:
-                - 선택 기준을 일부 충족하지 않는 기사일지라도 기업명과 관련된 재정적 또는 전략적 변동에 대해서는 중요도를 '중'으로 평가
-                - 필요하다면 중요도 '하'도 고려하여 최소 2개의 기사를 선정
-
-                [확장된 유효 언론사 목록]
-                {expanded_valid_press_str}
-
-                [기존 제외 기준]
-                {enhanced_exclusion_criteria}
-
-                [기존 중복 처리 기준]
-                {enhanced_duplicate_handling}
-
-                [기존 선택 기준]
-                {enhanced_selection_criteria}
-
-                [전체 뉴스 목록]
-                """
-                
-                # 모든 뉴스 데이터를 하나의 리스트로 통합 (JSON 형식으로)
-                all_news_json = []
-                for i, news in enumerate(combined_news):
-                    all_news_json.append({
-                        "index": i+1,
-                        "title": news.get('content', '제목 없음'),
-                        "url": news.get('url', ''),
-                        "date": news.get('date', ''),
-                        "press": news.get('press', '')
-                    })
-                
-                # 프롬프트에 통합된 뉴스 목록 추가
-                reevaluation_system_prompt += str(all_news_json)
-                
-                reevaluation_system_prompt += """
-                
-                [분류된 뉴스 목록]
-                - 제외된 뉴스: {[f"제목: {news['title']}, 인덱스: {news['index']}, 사유: {news.get('reason', '')}" for news in reevaluation_state["excluded_news"]]}
-                - 보류 뉴스: {[f"제목: {news['title']}, 인덱스: {news['index']}, 사유: {news.get('reason', '')}" for news in reevaluation_state["borderline_news"]]}
-                - 유지 뉴스: {[f"제목: {news['title']}, 인덱스: {news['index']}, 사유: {news.get('reason', '')}" for news in reevaluation_state["retained_news"]]}
-
-                ⚠️ 매우 중요한 지시사항 ⚠️
-                1. 반드시 최소 2개 이상의 기사를 선정해야 합니다.
-                2. 언론사와 기사 내용을 고려하여 선정 기준을 대폭 완화하세요.
-                3. 원래 '제외'로 분류했던 기사 중에서도 회계법인 관점에서 조금이라도 가치가 있는 내용이 있다면 재검토하세요.
-                4. 어떤 경우에도 2개 미만의 기사를 선정하지 마세요. 이는 절대적인 요구사항입니다.
-                5. 모든 기사가 부적합하다고 판단되더라도 그 중에서 가장 나은 2개는 선정해야 합니다.
-                6. 추가 언론사 목록의 기사들도 동등하게 고려하세요.
-
-                다음 JSON 형식으로 응답해주세요:
-                {
-                    "reevaluated_news": [
-                        {
-                            "index": 1,
-                            "title": "뉴스 제목",
-                            "press": "언론사명",
-                            "date": "발행일자",
-                            "reason": "선정 사유",
-                            "keywords": ["키워드1", "키워드2"],
-                            "affiliates": ["계열사1", "계열사2"],
-                            "importance": "중요도(상/중/하)"
-                        }
-                    ]
-                }
-                """
-                
-                # 재평가 시스템 프롬프트로 업데이트
-                reevaluation_state["system_prompt_3"] = reevaluation_system_prompt
-                
-                # 재평가 실행 (evaluate_importance 함수 재사용)
-                st.write("- 제외/중복/중요도 통합 재평가 중...")
-                reevaluation_result = evaluate_importance(reevaluation_state)
-                
-                # 재평가 결과가 있으면 최종 상태 업데이트
-                if "final_selection" in reevaluation_result and reevaluation_result["final_selection"]:
-                    final_state["final_selection"] = reevaluation_result["final_selection"]
-                    # 재평가 결과임을 표시하기 위한 필드 추가
-                    final_state["is_reevaluated"] = True
-                    st.success(f"재평가 후 {len(final_state['final_selection'])}개의 뉴스가 선택되었습니다.")
-                else:
-                    # 그래도 없으면 오류 메시지만 표시
-                    st.error("재평가 후에도 선정할 수 있는 뉴스가 없습니다.")
-
-            # 키워드별 분석 결과 저장
-            all_results[company] = final_state["final_selection"]
-            
-            # 키워드 구분선 추가
-            st.markdown("---")
-            
-            # 키워드별 섹션 구분
-            st.markdown(f"## 📊 {company} 분석 결과")
-            
-            # 전체 뉴스 표시 (필터링 전)
-            with st.expander(f"📰 '{company}' 관련 전체 뉴스 (필터링 전)"):
-                for i, news in enumerate(final_state.get("original_news_data", []), 1):
-                    date_str = news.get('date', '날짜 정보 없음')
-                    url = news.get('url', 'URL 정보 없음')
-                    press = news.get('press', '알 수 없음')
-                    st.markdown(f"""
-                    <div class="news-card">
-                        <div class="news-title">{i}. {news['content']}</div>
-                        <div class="news-meta">📰 {press}</div>
-                        <div class="news-date">📅 {date_str}</div>
-                        <div class="news-url">🔗 <a href="{url}" target="_blank">{url}</a></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # 유효 언론사 필터링된 뉴스 표시
-            with st.expander(f"📰 '{company}' 관련 유효 언론사 뉴스"):
-                for i, news in enumerate(final_state["news_data"]):
-                    date_str = news.get('date', '날짜 정보 없음')
-                    url = news.get('url', 'URL 정보 없음')
-                    press = news.get('press', '알 수 없음')
-                    st.markdown(f"""
-                    <div class="news-card">
-                        <div class="news-title">{i+1}. {news['content']}</div>
-                        <div class="news-meta">📰 {press}</div>
-                        <div class="news-date">📅 {date_str}</div>
-                        <div class="news-url">🔗 <a href="{url}" target="_blank">{url}</a></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # 2단계: 유효 언론사 필터링 결과 표시
-            st.markdown("<div class='subtitle'>🔍 2단계: 유효 언론사 필터링 결과</div>", unsafe_allow_html=True)
-            st.markdown(f"유효 언론사 뉴스: {len(final_state['news_data'])}개")
-            
-            # 3단계: 제외/보류/유지 뉴스 표시
-            st.markdown("<div class='subtitle'>🔍 3단계: 뉴스 분류 결과</div>", unsafe_allow_html=True)
-            
-            # 제외된 뉴스
-            with st.expander("❌ 제외된 뉴스"):
-                for news in final_state["excluded_news"]:
-                    st.markdown(f"<div class='excluded-news'>[{news['index']}] {news['title']}<br/>└ {news['reason']}</div>", unsafe_allow_html=True)
+            # 이메일 내용에 추가
+            email_content += f"\n=== {company} 분석 결과 ===\n"
+            email_content += f"수집된 뉴스: {analysis_result['collected_count']}개\n"
+            email_content += f"날짜 필터링 후: {analysis_result['date_filtered_count']}개\n"
+            email_content += f"언론사 필터링 후: {analysis_result['press_filtered_count']}개\n"
+            email_content += f"최종 선별: {len(analysis_result['final_selection'])}개\n\n"
             
             # 보류 뉴스
             with st.expander("⚠️ 보류 뉴스"):
-                for news in final_state["borderline_news"]:
+                for news in analysis_result["borderline_news"]:
                     st.markdown(f"<div class='excluded-news'>[{news['index']}] {news['title']}<br/>└ {news['reason']}</div>", unsafe_allow_html=True)
             
             # 유지 뉴스
             with st.expander("✅ 유지 뉴스"):
-                for news in final_state["retained_news"]:
+                for news in analysis_result["retained_news"]:
                     st.markdown(f"<div class='excluded-news'>[{news['index']}] {news['title']}<br/>└ {news['reason']}</div>", unsafe_allow_html=True)
             
             # 4단계: 그룹핑 결과 표시
             st.markdown("<div class='subtitle'>🔍 4단계: 뉴스 그룹핑 결과</div>", unsafe_allow_html=True)
             
             with st.expander("📋 그룹핑 결과 보기"):
-                for group in final_state["grouped_news"]:
+                for group in analysis_result["grouped_news"]:
                     st.markdown(f"""
                     <div class="analysis-section">
                         <h4>그룹 {group['indices']}</h4>
@@ -1335,7 +1071,7 @@ if st.button("뉴스 분석 시작", type="primary"):
             st.markdown("<div class='subtitle'>🔍 5단계: 최종 선택 결과</div>", unsafe_allow_html=True)
             
             # 재평가 여부 확인 (is_reevaluated 필드 있으면 재평가된 것)
-            was_reevaluated = final_state.get("is_reevaluated", False)
+            was_reevaluated = analysis_result.get("is_reevaluated", False)
             
             # 재평가 여부에 따라 메시지와 스타일 변경
             if was_reevaluated:
@@ -1354,7 +1090,7 @@ if st.button("뉴스 분석 시작", type="primary"):
                 reason_prefix = "선별 이유: "
             
             # 최종 선정된 뉴스 표시
-            for news in final_state["final_selection"]:
+            for news in analysis_result["final_selection"]:
                 # 날짜 형식 변환
                 
                 date_str = format_date(news.get('date', ''))
@@ -1391,58 +1127,14 @@ if st.button("뉴스 분석 시작", type="primary"):
                 # 구분선 추가
                 st.markdown("---")
             
-            # 선정되지 않은 뉴스 표시
-            if final_state.get("not_selected_news"):
-                with st.expander("❌ 선정되지 않은 뉴스"):
-                    for news in final_state["not_selected_news"]:
-                        st.markdown(f"""
-                        <div class="not-selected-news">
-                            <div class="news-title">{news['index']}. {news['title']}</div>
-                            <div class="importance-low">💡 중요도: {news['importance']}</div>
-                            <div class="not-selected-reason">❌ 미선정 사유: {news['reason']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
+
             
-            # 디버그 정보
-            with st.expander("디버그 정보"):
-                st.markdown("### 1단계: 제외 판단")
-                st.markdown("#### 시스템 프롬프트")
-                st.text(final_state.get("system_prompt_1", "없음"))
-                st.markdown("#### 사용자 프롬프트")
-                st.text(final_state.get("user_prompt_1", "없음"))
-                st.markdown("#### LLM 응답")
-                st.text(final_state.get("llm_response_1", "없음"))
-                
-                st.markdown("### 2단계: 그룹핑")
-                st.markdown("#### 시스템 프롬프트")
-                st.text(final_state.get("system_prompt_2", "없음"))
-                st.markdown("#### 사용자 프롬프트")
-                st.text(final_state.get("user_prompt_2", "없음"))
-                st.markdown("#### LLM 응답")
-                st.text(final_state.get("llm_response_2", "없음"))
-                
-                st.markdown("### 3단계: 중요도 평가")
-                st.markdown("#### 시스템 프롬프트")
-                st.text(final_state.get("system_prompt_3", "없음"))
-                st.markdown("#### 사용자 프롬프트")
-                st.text(final_state.get("user_prompt_3", "없음"))
-                st.markdown("#### LLM 응답")
-                st.text(final_state.get("llm_response_3", "없음"))
-                
-                # 6단계: 재평가 정보 추가
-                if final_state.get("is_reevaluated", False):
-                    st.markdown("### 4단계: 재평가")
-                    st.markdown("#### 시스템 프롬프트")
-                    # 실제 사용된 재평가 시스템 프롬프트 표시
-                    st.text(reevaluation_state.get("system_prompt_3", "없음") if 'reevaluation_state' in locals() else "재평가 프롬프트 정보 없음")
-                    st.markdown("#### 사용자 프롬프트")
-                    st.text(reevaluation_state.get("user_prompt_3", "없음") if 'reevaluation_state' in locals() else "재평가 사용자 프롬프트 정보 없음")
-                    st.markdown("#### LLM 응답")
-                    st.text(reevaluation_state.get("llm_response_3", "없음") if 'reevaluation_state' in locals() else "재평가 LLM 응답 정보 없음")
+            # 디버그 정보 (간소화)
+            st.info("AI 분석이 완료되었습니다. 상세한 분석 과정은 로그에서 확인할 수 있습니다.")
             
             # 이메일 내용 추가
             email_content += f"{i}. {company}\n"
-            for news in final_state["final_selection"]:
+            for news in analysis_result["final_selection"]:
                 # 날짜 형식 변환
                 date_str = news.get('date', '')
                 try:

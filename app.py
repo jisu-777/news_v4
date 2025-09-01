@@ -362,7 +362,7 @@ selected_categories = st.sidebar.multiselect(
     "키워드 카테고리를 선택하세요 (복수 선택 가능)",
     options=list(KEYWORD_CATEGORIES.keys()),
     default=["삼일PwC"],  # 테스트용으로 삼일PwC만 기본 선택
-    help="분석할 키워드 카테고리를 하나 이상 선택하세요. 테스트용으로 삼일PwC_핵심이 기본 선택됩니다."
+    help="분석할 키워드 카테고리를 하나 이상 선택하세요. 테스트용으로 삼일PwC가 기본 선택됩니다."
 )
 
 # 선택된 카테고리들의 모든 키워드 수집

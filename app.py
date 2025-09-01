@@ -204,7 +204,7 @@ def analyze_news_with_ai(news_list, category_name):
     try:
         client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         
-        # AI 분석 프롬프트 (자유 텍스트 응답 요청)
+        # AI 분석 프롬프트 (간소화된 응답 요청)
         analysis_prompt = f"""
 다음은 '{category_name}' 카테고리로 수집된 뉴스 목록입니다.
 
@@ -220,14 +220,12 @@ def analyze_news_with_ai(news_list, category_name):
 [응답 형식]
 선별된 뉴스를 다음과 같이 나열해주세요:
 
-1. [뉴스 제목] - 중요도: 높음/보통/낮음
+1. [뉴스 제목]
    언론사: [언론사명]
-   선별 이유: [회계법인 관점에서의 중요성]
    링크: [뉴스 URL]
 
-2. [뉴스 제목] - 중요도: 높음/보통/낮음
+2. [뉴스 제목]
    언론사: [언론사명]
-   선별 이유: [회계법인 관점에서의 중요성]
    링크: [뉴스 URL]
 
 ...
@@ -447,7 +445,7 @@ def main():
             <h3>👋 PwC 뉴스 분석기에 오신 것을 환영합니다!</h3>
             <p>왼쪽 사이드바에서 분석할 카테고리와 날짜를 선택한 후 "뉴스 분석 시작" 버튼을 클릭하세요.</p>
             <p><strong>주의:</strong> UI에서는 카테고리만 표시되며, 키워드는 AI 분석 시에만 사용됩니다.</p>
-            <p><strong>API 설정:</strong> 환경변수에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정해주세요.</p>
+
         </div>
         """, unsafe_allow_html=True)
 
@@ -475,24 +473,17 @@ def display_results(all_results, selected_categories):
             st.info(f"📈 AI 분석 결과: {collected_count}건 중 {selected_count}건 선별")
             
             if selected_news:
+                # 테이블 형태로 표시
+                table_data = []
                 for news in selected_news:
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="news-item">
-                            <div class="news-title">{news['title']}</div>
-                            <div class="news-meta">
-                                📅 {news['date']} | 
-                                ⭐ 중요도: {news['importance']} | 
-                                📰 {news['press_analysis']}
-                            </div>
-                            <div class="news-url">
-                                🔗 <a href="{news['url']}" target="_blank">{news['url']}</a>
-                            </div>
-                            <div class="news-meta">
-                                💡 선별 이유: {news['selection_reason']}
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
+                    table_data.append({
+                        "제목": news.get('title', '제목 없음'),
+                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
+                        "링크": news.get('url', '링크 없음')
+                    })
+                
+                # Streamlit 테이블로 표시
+                st.table(table_data)
             else:
                 st.info("AI 분석 결과 해당 카테고리에서 선별할 만한 뉴스가 없습니다.")
     

@@ -623,8 +623,9 @@ def display_results(all_results, selected_categories):
             st.info(f"📈 AI 분석 결과: {selected_count}건 선별")
             
             if selected_news:
-                # 각 뉴스를 개별적으로 표시하여 링크를 클릭 가능하게 함
-                for i, news in enumerate(selected_news):
+                # 테이블 형태로 표시
+                table_data = []
+                for news in selected_news:
                     # 원본 뉴스에서 언론사 정보 확인
                     original_press = ""
                     for original_news in result['collected_news']:
@@ -637,34 +638,19 @@ def display_results(all_results, selected_categories):
                     ai_press = news.get('press_analysis', '언론사 정보 없음')
                     final_press = ai_press if ai_press and ai_press != '언론사 정보 없음' else original_press
                     
-                    # 뉴스 아이템을 카드 형태로 표시
-                    with st.container():
-                        st.markdown(f"**{i+1}. {news.get('title', '제목 없음')}**")
-                        st.markdown(f"**언론사**: {final_press or '언론사 정보 없음'}")
-                        if news.get('url'):
-                            st.markdown(f"**링크**: [클릭하여 열기]({news.get('url')})")
-                        else:
-                            st.markdown("**링크**: 링크 없음")
-                        st.divider()
+                    table_data.append({
+                        "카테고리": category,
+                        "뉴스제목": news.get('title', '제목 없음'),
+                        "언론사": final_press or '언론사 정보 없음',
+                        "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
+                    })
+                
+                # Streamlit 테이블로 표시
+                st.table(table_data)
             else:
                 st.info("AI 분석 결과 해당 카테고리에서 선별할 만한 뉴스가 없습니다.")
     
-    # 전체 요약
-    st.markdown("## 📋 전체 요약")
-    total_collected = sum(len(result['collected_news']) for result in all_results.values())
-    total_selected = sum(
-        len(result['analysis_result'].get('selected_news', [])) 
-        for result in all_results.values() 
-        if 'error' not in result['analysis_result']
-    )
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("분석 카테고리", len(selected_categories))
-    with col2:
-        st.metric("수집된 뉴스", total_collected)
-    with col3:
-        st.metric("AI 선별 뉴스", total_selected)
+    # 전체 요약 섹션 제거
 
 if __name__ == "__main__":
     main()

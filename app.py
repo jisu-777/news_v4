@@ -99,6 +99,8 @@ def format_date(date_str):
             
 # 워드 파일 생성 함수들 제거됨 (현재 사용하지 않음)
 
+
+
 # 커스텀 CSS
 st.markdown("""
 <style>
@@ -292,11 +294,7 @@ st.markdown("""
 
 # 메인 타이틀
 st.markdown("---")
-col1, col2 = st.columns([1, 4])
-with col1:
-    st.image("logo_orange.png", width=100, use_container_width=False)
-with col2:
-    st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
 st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
 
 # 브라우저 탭 제목 설정
@@ -306,7 +304,7 @@ st.markdown("<script>document.title = 'PwC 뉴스 분석기';</script>", unsafe_
 DEFAULT_KEYWORDS = COMPANY_CATEGORIES["Anchor"]
 
 # 사이드바 설정
-st.sidebar.title("🔍 PwC 뉴스 분석기")
+st.sidebar.title("🔍 PWC 뉴스 분석기")
 
 
 
@@ -363,7 +361,7 @@ if st.sidebar.button("🧪 테스트 모드: 삼일PwC만 검색", type="seconda
 selected_categories = st.sidebar.multiselect(
     "키워드 카테고리를 선택하세요 (복수 선택 가능)",
     options=list(KEYWORD_CATEGORIES.keys()),
-    default=["삼일PwC_핵심"],  # 테스트용으로 삼일PwC만 기본 선택
+    default=["삼일PwC"],  # 테스트용으로 삼일PwC만 기본 선택
     help="분석할 키워드 카테고리를 하나 이상 선택하세요. 테스트용으로 삼일PwC_핵심이 기본 선택됩니다."
 )
 
@@ -671,8 +669,8 @@ if st.button("뉴스 분석 시작", type="primary"):
     # HTML 버전 생성
     html_email_content = "<div style='font-family: Arial, sans-serif; max-width: 800px; font-size: 14px; line-height: 1.5;'>"
     
-    html_email_content += "<div style='margin-top: 20px; font-size: 14px;'>안녕하세요, 좋은 아침입니다!<br>오늘의 Client Intelligence 전달 드립니다.<br><br></div>"
-    plain_email_content = "\n안녕하세요, 좋은 아침입니다!\n오늘의 Client Intelligence 전달 드립니다."
+    html_email_content += "<div style='margin-top: 20px; font-size: 14px;'>안녕하세요, 좋은 아침입니다!<br>News Clipping 전달 드립니다.<br><br></div>"
+    plain_email_content = "\n안녕하세요, 좋은 아침입니다!\nNews Clipping 전달 드립니다."
     
     html_email_content += "<div style='font-size: 14px; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #000;'>[Client Intelligence]</div>"
     
@@ -739,8 +737,8 @@ if st.button("뉴스 분석 시작", type="primary"):
         plain_email_content += "\n"
     
     # 서명 추가
-    html_email_content += "<div style='margin-top: 20px; font-size: 14px;'><br>감사합니다.<br>Client & Market 드림</div>"
-    plain_email_content += "\n감사합니다.\nClient & Market 드림"
+    html_email_content += "<div style='margin-top: 20px; font-size: 14px;'><br>감사합니다.<br>M&C 드림</div>"
+    plain_email_content += "\n감사합니다.\nM&C 드림"
     
     html_email_content += "</div>"
     

@@ -8,20 +8,17 @@ This file contains shared variables and configurations used across the news clip
 Centralizing these variables makes maintenance easier and ensures consistency.
 """
 
-# Company categories and definitions
+# Company categories and definitions - 삼일 회계법인 중심으로 축소
 COMPANY_CATEGORIES = {
-    "Anchor": [
-        "주요기업", "산업동향", "경쟁사", "전문영역", "삼일PwC"
+    "삼일PwC": [
+        "삼일회계법인", "회계업계"
     ]
 }
 
-# 그룹과 회사 연결 매핑
+# 그룹과 회사 연결 매핑 - 삼일 회계법인 중심으로 축소
 COMPANY_GROUP_MAPPING = {
-    "주요기업": ["삼성", "SK", "현대차", "LG", "포스코", "롯데", "한화", "카카오", "네이버"],
-    "산업동향": ["반도체", "배터리", "자동차", "철강", "석유화학", "조선", "건설", "바이오", "방산", "디스플레이", "AI", "에너지"],
-    "경쟁사": ["한영EY", "삼정KPMG", "Deloitte"],
-    "전문영역": ["M&A", "경제", "인사동정", "금융", "세제정책"],
-    "삼일PwC": ["삼일 및 PwC 관련"]
+    "삼일회계법인": ["삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"],
+    "회계업계": ["Big4", "회계법인", "회계업계", "감사업계", "삼정KPMG", "삼정회계", "KPMG삼정", "딜로이트안진", "안진회계", "딜로이트코리아", "한영회계", "EY한영", "EY코리아"]
 }
 
 # 카테고리별 활성화 설정

@@ -350,12 +350,16 @@ st.sidebar.markdown("---")
 # 키워드 선택 UI
 st.sidebar.markdown("### 🔍 분석할 키워드 선택")
 
-# 키워드 카테고리 복수 선택
+# 테스트용 버튼 추가
+if st.sidebar.button("🧪 테스트 모드: 삼일PwC만 검색", type="secondary"):
+    st.sidebar.success("테스트 모드 활성화: 삼일PwC만 검색합니다.")
+
+# 키워드 카테고리 복수 선택 (테스트용으로 삼일PwC_핵심만 기본 선택)
 selected_categories = st.sidebar.multiselect(
     "키워드 카테고리를 선택하세요 (복수 선택 가능)",
     options=list(KEYWORD_CATEGORIES.keys()),
-    default=list(KEYWORD_CATEGORIES.keys()),  # 디폴트로 전체 선택
-    help="분석할 키워드 카테고리를 하나 이상 선택하세요. 클릭만으로도 여러 개 선택할 수 있습니다."
+    default=["삼일PwC_핵심"],  # 테스트용으로 삼일PwC만 기본 선택
+    help="분석할 키워드 카테고리를 하나 이상 선택하세요. 테스트용으로 삼일PwC_핵심이 기본 선택됩니다."
 )
 
 # 선택된 카테고리들의 모든 키워드 수집

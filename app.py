@@ -687,24 +687,6 @@ if st.button("뉴스 분석 시작", type="primary"):
                 continue
             
             # 키워드별 개별 결과 표시 제거 - 카테고리 통합 결과만 표시
-            
-            # 이메일 내용에 추가 (키워드 정보 포함)
-            email_content += f"{i}. {keyword}\n"
-            for news in analysis_result["final_selection"]:
-                date_str = news.get('date', '')
-                try:
-                    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                    formatted_date = date_obj.strftime('%m/%d')
-                except Exception as e:
-                    try:
-                        date_obj = datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %Z')
-                        formatted_date = date_obj.strftime('%m/%d')
-                    except Exception as e:
-                        formatted_date = date_str if date_str else '날짜 정보 없음'
-                
-                url = news.get('url', '')
-                email_content += f"  - {news['title']} ({formatted_date}) {url}\n"
-            email_content += "\n"
 
     # 모든 키워드 분석이 끝난 후 카테고리별 통합 완료 메시지
     st.success(f"✅ 선택된 {len(selected_categories)}개 카테고리 분석 완료!")
@@ -950,41 +932,8 @@ else:
     """
     ### 👋 PwC 뉴스 분석기에 오신 것을 환영합니다!
     
-    이 도구는 입력한 키워드에 대한 최신 뉴스를 자동으로 수집하고, 회계법인 관점에서 중요한 뉴스를 선별하여 분석해드립니다.
-    
-    #### 주요 기능:
-    1. 최신 뉴스 자동 수집 (기본 100개)
-    2. 신뢰할 수 있는 언론사 필터링
-    3. 6단계 AI 기반 뉴스 분석 프로세스:
-       - 1단계: 뉴스 수집 - 키워드 기반으로 최신 뉴스 데이터 수집
-       - 2단계: 유효 언론사 필터링 - 신뢰할 수 있는 언론사 선별
-       - 3단계: 제외/보류/유지 판단 - 회계법인 관점에서의 중요도 1차 분류
-       - 4단계: 유사 뉴스 그룹핑 - 중복 기사 제거 및 대표 기사 선정
-       - 5단계: 중요도 평가 및 최종 선정 - 회계법인 관점의 중요도 평가
-       - 6단계: 필요시 재평가 - 선정된 뉴스가 없을 경우 AI가 기준을 완화하여 재평가
-    4. 선별된 뉴스에 대한 상세 정보 제공
-       - 제목 및 날짜
-       - 원문 링크
-       - 선별 이유
-       - 키워드, 관련 계열사, 언론사 정보
-    5. 분석 결과 이메일 형식 미리보기
-    
-    #### 사용 방법:
-    1. 사이드바에서 분석할 기업을 선택하세요 (최대 10개)
-       - 기본 제공 기업 목록에서 선택
-       - 새로운 기업 직접 추가 가능
-    2. GPT 모델을 선택하세요
-       - gpt-4o: 빠르고 실시간 (기본값)
-    3. 날짜 필터를 설정하세요
-       - 기본값: 어제 또는 지난 금요일(월요일인 경우)부터 오늘까지
-    4. "뉴스 분석 시작" 버튼을 클릭하세요
-    
-    #### 분석 결과 확인:
-    - 각 키워드별 최종 선정된 중요 뉴스
-    - 선정 과정의 중간 결과(제외/보류/유지, 그룹핑 등)
-    - 선정된 모든 뉴스의 요약 이메일 미리보기
-    - 디버그 정보 (시스템 프롬프트, AI 응답 등)
-    
+    이 도구는 입력한 키워드에 대한 최신 뉴스를 자동으로 수집하고, 회계법인 관점에서 중요한 뉴스를 선별하여 분석해드립니다.    
+
     """
 
 # 푸터

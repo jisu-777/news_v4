@@ -5,7 +5,7 @@ import json
 import openai
 import os
 import re
-from config import KEYWORD_CATEGORIES, AI_ANALYSIS_PROMPT, NAVER_API_SETTINGS
+from config import KEYWORD_CATEGORIES, NAVER_API_SETTINGS
 
 # 페이지 설정
 st.set_page_config(
@@ -204,8 +204,39 @@ def analyze_news_with_ai(news_list, category_name):
     try:
         client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         
-        # AI 분석 프롬프트 (config에서 가져온 프롬프트 사용)
-        analysis_prompt = AI_ANALYSIS_PROMPT + f"\n\n분석할 뉴스 목록:\n{json.dumps([{'title': news['title'], 'url': news['url'], 'date': news['date'], 'raw_press_info': news['raw_press']} for news in news_list], ensure_ascii=False)}"
+        # AI 분석 프롬프트 (자유 텍스트 응답 요청)
+        analysis_prompt = f"""
+다음은 '{category_name}' 카테고리로 수집된 뉴스 목록입니다.
+
+각 뉴스를 분석하여 회계법인 관점에서 중요한 뉴스를 선별해주세요.
+
+[선별 기준]
+- 삼일PwC 관련 뉴스 (최우선)
+- 재무/실적 정보 (매출, 영업이익, 순이익, 투자계획)
+- 회계/감사 관련 (회계처리 변경, 감사의견, 회계법인 소식)
+- 비즈니스 중요도 (신규사업, M&A, 조직변화, 경영진 인사)
+- 산업 동향 (정책, 규제, 시장 변화)
+
+[응답 형식]
+선별된 뉴스를 다음과 같이 나열해주세요:
+
+1. [뉴스 제목] - 중요도: 높음/보통/낮음
+   언론사: [언론사명]
+   선별 이유: [회계법인 관점에서의 중요성]
+   링크: [뉴스 URL]
+
+2. [뉴스 제목] - 중요도: 높음/보통/낮음
+   언론사: [언론사명]
+   선별 이유: [회계법인 관점에서의 중요성]
+   링크: [뉴스 URL]
+
+...
+
+분석할 뉴스 목록:
+{chr(10).join([f"{i+1}. {news['title']} - {news['url']}" for i, news in enumerate(news_list)])}
+
+**중요**: 최소 3개 뉴스는 반드시 선별하고, 너무 엄격하게 선별하지 말고 비즈니스 관점에서 유용할 수 있는 정보라면 포함하세요.
+"""
         
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -218,15 +249,19 @@ def analyze_news_with_ai(news_list, category_name):
         
         ai_response = response.choices[0].message.content
         
+        # AI 응답을 파싱하여 구조화된 데이터로 변환
         try:
-            result = json.loads(ai_response)
-            return result
-        except json.JSONDecodeError:
+            parsed_result = parse_ai_response(ai_response, news_list)
+            return parsed_result
+        except Exception as parse_error:
+            st.warning(f"AI 응답 파싱 중 오류: {str(parse_error)}")
+            # 파싱 실패 시 기본 구조 반환
             return {
                 "selected_news": [],
                 "total_analyzed": len(news_list),
                 "selected_count": 0,
-                "error": "AI 응답 파싱 실패"
+                "error": f"응답 파싱 실패: {str(parse_error)}",
+                "raw_response": ai_response  # 원본 응답도 포함
             }
             
     except Exception as e:
@@ -237,6 +272,83 @@ def analyze_news_with_ai(news_list, category_name):
             "selected_count": 0,
             "error": f"AI 분석 실패: {str(e)}"
         }
+
+def parse_ai_response(ai_response, news_list):
+    """AI 응답을 파싱하여 구조화된 데이터로 변환"""
+    selected_news = []
+    
+    # AI 응답을 줄 단위로 분리
+    lines = ai_response.strip().split('\n')
+    
+    current_news = {}
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+            
+        # 새로운 뉴스 항목 시작 (숫자로 시작하는 줄)
+        if re.match(r'^\d+\.', line):
+            # 이전 뉴스가 있으면 저장
+            if current_news and 'title' in current_news:
+                selected_news.append(current_news)
+            
+            # 새 뉴스 시작
+            current_news = {}
+            # 제목 추출 (숫자와 점 제거)
+            title = re.sub(r'^\d+\.\s*', '', line)
+            # 중요도 추출
+            importance_match = re.search(r'중요도:\s*(높음|보통|낮음)', title)
+            if importance_match:
+                current_news['importance'] = importance_match.group(1)
+                title = re.sub(r'\s*-\s*중요도:\s*(높음|보통|낮음)', '', title)
+            current_news['title'] = title.strip()
+            
+        # 언론사 정보
+        elif line.startswith('언론사:'):
+            press = line.replace('언론사:', '').strip()
+            current_news['press_analysis'] = press
+            
+        # 선별 이유
+        elif line.startswith('선별 이유:'):
+            reason = line.replace('선별 이유:', '').strip()
+            current_news['selection_reason'] = reason
+            
+        # 링크
+        elif line.startswith('링크:'):
+            url = line.replace('링크:', '').strip()
+            current_news['url'] = url
+            
+        # 날짜 (원본 뉴스에서 찾기)
+        elif 'title' in current_news:
+            # 원본 뉴스 목록에서 제목으로 매칭하여 날짜 찾기
+            for news in news_list:
+                if news['title'] in current_news['title'] or current_news['title'] in news['title']:
+                    current_news['date'] = news['date']
+                    if 'url' not in current_news:
+                        current_news['url'] = news['url']
+                    break
+    
+    # 마지막 뉴스 추가
+    if current_news and 'title' in current_news:
+        selected_news.append(current_news)
+    
+    # 필수 필드가 없는 경우 기본값 설정
+    for news in selected_news:
+        if 'importance' not in news:
+            news['importance'] = '보통'
+        if 'press_analysis' not in news:
+            news['press_analysis'] = '언론사 정보 없음'
+        if 'selection_reason' not in news:
+            news['selection_reason'] = 'AI가 선별한 뉴스'
+        if 'date' not in news:
+            news['date'] = '날짜 정보 없음'
+    
+    return {
+        "selected_news": selected_news,
+        "total_analyzed": len(news_list),
+        "selected_count": len(selected_news)
+    }
 
 def main():
     # 메인 타이틀

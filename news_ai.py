@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import streamlit as st
 import time
 from urllib.parse import urlparse
+from config import TRUSTED_PRESS_ALIASES
 
 import dotenv #pwc
 dotenv.load_dotenv(override=True) #pwc
@@ -45,26 +46,7 @@ class AgentState(TypedDict):
     start_datetime: datetime
     end_datetime: datetime
 
-# 신뢰할 수 있는 언론사 목록 (기본값으로만 사용)
-TRUSTED_PRESS_ALIASES = {
-    "조선일보": ["조선일보", "chosun", "chosun.com"],
-    "중앙일보": ["중앙일보", "joongang", "joongang.co.kr", "joins.com"],
-    "동아일보": ["동아일보", "donga", "donga.com"],
-    "조선비즈": ["조선비즈", "chosunbiz", "biz.chosun.com"],
-    "한국경제": ["한국경제", "한경", "hankyung", "hankyung.com", "한경닷컴"],
-    "매일경제": ["매일경제", "매경", "mk", "mk.co.kr"],
-    "연합뉴스": ["연합뉴스", "yna", "yna.co.kr"],
-    "파이낸셜뉴스": ["파이낸셜뉴스", "fnnews", "fnnews.com"],
-    "데일리팜": ["데일리팜", "dailypharm", "dailypharm.com"],
-    "IT조선": ["it조선", "it.chosun.com", "itchosun"],
-    "머니투데이": ["머니투데이", "mt", "mt.co.kr"],
-    "비즈니스포스트": ["비즈니스포스트", "businesspost", "businesspost.co.kr"],
-    "이데일리": ["이데일리", "edaily", "edaily.co.kr"],
-    "아시아경제": ["아시아경제", "asiae", "asiae.co.kr"],
-    "뉴스핌": ["뉴스핌", "newspim", "newspim.com"],
-    "뉴시스": ["뉴시스", "newsis", "newsis.com"],
-    "헤럴드경제": ["헤럴드경제", "herald", "heraldcorp", "heraldcorp.com"]
-}
+# config.py에서 TRUSTED_PRESS_ALIASES를 import하여 사용
 
 # 헬퍼 함수: LLM 호출
 def call_llm(state: AgentState, system_prompt: str, user_prompt: str, stage: int = 1) -> str:
@@ -339,38 +321,8 @@ def filter_valid_press(state: AgentState) -> AgentState:
     """유효 언론사 필터링"""
     news_data = state.get("news_data", [])
     
-    # UI에서 설정한 유효 언론사 목록 가져오기
-    valid_press_dict_str = state.get("valid_press_dict", "")
-    
-    # UI 설정 값이 문자열이면 딕셔너리로 파싱
-    valid_press_config = {}
-    if isinstance(valid_press_dict_str, str) and valid_press_dict_str.strip():
-        print("\n[DEBUG] UI에서 설정한 언론사 문자열 파싱 시작")
-        try:
-            # 문자열에서 딕셔너리 파싱
-            lines = valid_press_dict_str.strip().split('\n')
-            for line in lines:
-                line = line.strip()
-                if line and ': ' in line:
-                    press_name, aliases_str = line.split(':', 1)
-                    try:
-                        # 문자열 형태의 리스트를 실제 리스트로 변환
-                        aliases = eval(aliases_str.strip())
-                        valid_press_config[press_name.strip()] = aliases
-                        print(f"[DEBUG] 파싱 성공: {press_name.strip()} -> {aliases}")
-                    except Exception as e:
-                        print(f"[DEBUG] 파싱 실패: {line}, 오류: {str(e)}")
-        except Exception as e:
-            print(f"[DEBUG] 전체 파싱 실패: {str(e)}")
-    # UI 설정 값이 이미 딕셔너리면 그대로 사용
-    elif isinstance(valid_press_dict_str, dict):
-        valid_press_config = valid_press_dict_str
-        print("\n[DEBUG] UI에서 설정한 언론사 딕셔너리 직접 사용")
-    
-    # 파싱 결과가 비어있으면 기본값 사용
-    if not valid_press_config:
-        print("\n[DEBUG] 유효한 설정을 찾을 수 없어 기본값 사용")
-        valid_press_config = TRUSTED_PRESS_ALIASES
+    # config.py의 TRUSTED_PRESS_ALIASES 사용
+    valid_press_config = TRUSTED_PRESS_ALIASES
     
     print(f"\n전체 수집된 뉴스 수: {len(news_data)}")
     print(f"\n=== 유효 언론사 설정 ===")

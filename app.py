@@ -70,26 +70,7 @@ def clean_html_entities(text):
     return cleaned_text
 
 
-def parse_press_config(press_dict_str: str) -> Dict[str, List[str]]:
-    """UI에서 설정한 언론사 문자열을 딕셔너리로 파싱하는 함수"""
-    press_config = {}
-    if isinstance(press_dict_str, str) and press_dict_str.strip():
-        try:
-            lines = press_dict_str.strip().split('\n')
-            for line in lines:
-                line = line.strip()
-                if line and ': ' in line:
-                    press_name, aliases_str = line.split(':', 1)
-                    try:
-                        # 문자열 형태의 리스트를 실제 리스트로 변환
-                        aliases = eval(aliases_str.strip())
-                        press_config[press_name.strip()] = aliases
-                    except Exception as e:
-                        print(f"언론사 파싱 실패: {line}, 오류: {str(e)}")
-        except Exception as e:
-            print(f"전체 언론사 파싱 실패: {str(e)}")
-    
-    return press_config
+
 
 
 def format_date(date_str):
@@ -430,9 +411,9 @@ st.markdown("""
 
 # 메인 타이틀
 st.markdown("---")
-col1, col2 = st.columns([1, 5])
+col1, col2 = st.columns([1, 4])
 with col1:
-    st.image("logo_orange.png", width=80)
+    st.image("logo_orange.png", width=100, use_column_width=False)
 with col2:
     st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
 st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
@@ -528,125 +509,16 @@ search_keywords = list(set(search_keywords))
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 특화 기준 관리 섹션
-st.sidebar.markdown("### 🎯 특화 기준 정보")
-
-# 삼일PwC 키워드인지 확인
-is_samil_pwc = any(keyword in ["삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"] for keyword in selected_keywords)
-
-if is_samil_pwc:
-    st.sidebar.success("**삼일PwC 특별 프롬프트가 적용됩니다!**")
-    st.sidebar.info("삼일PwC 관련 뉴스에 대해 상세한 포함/제외 기준이 적용됩니다.")
-else:
-    st.sidebar.info("**일반 회계법인 기준이 적용됩니다.**")
-
-# 미리보기 버튼
-with st.sidebar.expander("🔍 특화 기준 미리보기"):
-    if is_samil_pwc:
-        st.success("**삼일PwC 특별 기준 적용**")
-        st.write("• 상세한 포함/제외 기준")
-        st.write("• 중복 제거 기준")
-        st.write("• 경계 사례 판단 기준")
-    else:
-        st.info("**일반 회계법인 기준 적용**")
-        st.write("• 기본 제외/선택 기준")
-
-# 구분선 추가
-st.sidebar.markdown("---")
-
-# GPT 모델 선택 섹션
-st.sidebar.markdown("### 🤖 GPT 모델 선택")
-
-selected_model = st.sidebar.selectbox(
-    "분석에 사용할 GPT 모델을 선택하세요",
-    options=list(GPT_MODELS.keys()),
-    index=list(GPT_MODELS.keys()).index(DEFAULT_GPT_MODEL) if DEFAULT_GPT_MODEL in GPT_MODELS else 0,
-    format_func=lambda x: f"{x} - {GPT_MODELS[x]}",
-    help="각 모델의 특성:\n" + "\n".join([f"• {k}: {v}" for k, v in GPT_MODELS.items()])
-)
-
-# 모델 설명 표시
-st.sidebar.markdown(f"""
-<div style='background-color: #f0f2f6; padding: 10px; border-radius: 5px; margin-bottom: 20px;'>
-    <strong>선택된 모델:</strong> {selected_model}<br>
-    <strong>특징:</strong> {GPT_MODELS[selected_model]}
-</div>
-""", unsafe_allow_html=True)
-
-# 구분선 추가
-st.sidebar.markdown("---")
+# 기본 모델 설정 (UI에서 선택 불가)
+selected_model = DEFAULT_GPT_MODEL
 
 # 검색 결과 수 - 키워드당 200개로 설정 (신뢰할 수 있는 언론사에서만)
 max_results = 200
 
-# AI 프롬프트 설정 (사용자 편집 가능)
-st.sidebar.markdown("### 🤖 AI 프롬프트 설정")
-st.sidebar.info("AI 분석에 사용되는 프롬프트는 config.py에서 관리됩니다.")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📋 1단계: 제외 판단 기준")
-
-# 제외 기준 설정 - 기본 기준만 표시하고 사용자 수정 허용
-exclusion_criteria = st.sidebar.text_area(
-    "❌ 제외 기준",
-    value=EXCLUSION_CRITERIA,
-    help="분석에서 제외할 뉴스의 기준을 설정하세요. 실제 분석 시 각 회사별 특화 기준이 추가로 적용됩니다.",
-    key="exclusion_criteria",
-    height=300
-)
-
-
-# 구분선 추가
-st.sidebar.markdown("---")
-
-# 2단계: 그룹핑 기준
-st.sidebar.markdown("### 📋 2단계: 그룹핑 기준")
-
-# 중복 처리 기준 설정 - 기본 기준만 표시하고 사용자 수정 허용
-duplicate_handling = st.sidebar.text_area(
-    "🔄 중복 처리 기준",
-    value=DUPLICATE_HANDLING,
-    help="중복된 뉴스를 처리하는 기준을 설정하세요. 실제 분석 시 각 회사별 특화 기준이 추가로 적용됩니다.",
-    key="duplicate_handling",
-    height=300
-)
-
-# 구분선 추가
-st.sidebar.markdown("---")
-
-# 3단계: 선택 기준
-st.sidebar.markdown("### 📋 3단계: 선택 기준")
-
-# 선택 기준 설정 - 기본 기준만 표시하고 사용자 수정 허용
-selection_criteria = st.sidebar.text_area(
-    "✅ 선택 기준",
-    value=SELECTION_CRITERIA,
-    help="뉴스 선택에 적용할 주요 기준들을 나열하세요. 실제 분석 시 각 회사별 특화 기준이 추가로 적용됩니다.",
-    key="selection_criteria",
-    height=300
-)
-
-# 응답 형식 설정
-response_format = st.sidebar.text_area(
-    "📝 응답 형식",
-    value="""선택된 뉴스 인덱스: [1, 3, 5]와 같은 형식으로 알려주세요.
-
-각 선택된 뉴스에 대해:
-제목: (뉴스 제목)
-언론사: (언론사명)
-발행일: (발행일자)
-선정 사유: (구체적인 선정 이유)
-분석 키워드: (해당 기업 그룹의 주요 계열사들)
-
-[제외된 주요 뉴스]
-제외된 중요 뉴스들에 대해:
-인덱스: (뉴스 인덱스)
-제목: (뉴스 제목)
-제외 사유: (구체적인 제외 이유)""",
-    help="분석 결과의 출력 형식을 설정하세요.",
-    key="response_format",
-    height=200
-)
+# config.py의 설정값들을 직접 사용
+exclusion_criteria = EXCLUSION_CRITERIA
+duplicate_handling = DUPLICATE_HANDLING
+selection_criteria = SELECTION_CRITERIA
 
 # 최종 프롬프트 생성
 analysis_prompt = f"""
@@ -748,7 +620,7 @@ if st.button("뉴스 분석 시작", type="primary"):
     }}
     
     [유효 언론사]
-    {valid_press_dict}
+    {TRUSTED_PRESS_ALIASES}
     
     [중복 처리 기준]
     {duplicate_handling}

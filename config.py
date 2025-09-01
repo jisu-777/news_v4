@@ -31,7 +31,7 @@ ACTIVE_CATEGORIES = {
 }
 
 # Default to Test companies for testing
-DEFAULT_COMPANIES = COMPANY_CATEGORIES["삼일PwC"]  # 삼일PwC 카테고리 사용
+DEFAULT_COMPANIES = KEYWORD_CATEGORIES["삼일PwC_핵심"]  # 삼일PwC 핵심 키워드 사용
 
 # Company keyword map - mapping companies to their related keywords
 COMPANY_KEYWORD_MAP = {

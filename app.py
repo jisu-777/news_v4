@@ -23,14 +23,15 @@ from news_service import NewsAnalysisService
 
 # Import centralized configuration
 from config import (
-    COMPANY_CATEGORIES,
+    KEYWORD_CATEGORIES,
     COMPANY_KEYWORD_MAP,
-    COMPANY_GROUP_MAPPING,
+    KEYWORD_GROUP_MAPPING,
     TRUSTED_PRESS_ALIASES,
     ADDITIONAL_PRESS_ALIASES,
     SYSTEM_PROMPT_1,
     SYSTEM_PROMPT_2,
     SYSTEM_PROMPT_3,
+    SAMIL_PWC_SPECIAL_PROMPT,
     EXCLUSION_CRITERIA,
     DUPLICATE_HANDLING,
     SELECTION_CRITERIA, 
@@ -418,8 +419,8 @@ with col2:
     st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
     st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
 
-# 기본 선택 카테고리를 Anchor로 설정
-COMPANIES = COMPANY_CATEGORIES["Anchor"]
+# 기본 선택 키워드 카테고리를 삼일PwC_핵심으로 설정
+DEFAULT_KEYWORDS = KEYWORD_CATEGORIES["삼일PwC_핵심"]
 
 # 사이드바 설정
 st.sidebar.title("🔍 분석 설정")
@@ -507,89 +508,90 @@ with col2:
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 카테고리 선택만 표시
-st.sidebar.markdown("### 🏢 분석할 카테고리 선택")
+# 키워드 선택 UI
+st.sidebar.markdown("### 🔍 분석할 키워드 선택")
 
-# 기업 카테고리 선택
+# 키워드 카테고리 선택
 selected_category = st.sidebar.radio(
-    "기업 카테고리를 선택하세요",
-    options=list(COMPANY_CATEGORIES.keys()),
-    index=0,  # Anchor를 기본값으로 설정
-    help="분석할 기업 카테고리를 선택하세요. Anchor(핵심), Growth(성장), Whitespace(신규) 중에서 선택할 수 있습니다."
+    "키워드 카테고리를 선택하세요",
+    options=list(KEYWORD_CATEGORIES.keys()),
+    index=0,  # 삼일PwC_핵심을 기본값으로 설정
+    help="분석할 키워드 카테고리를 선택하세요. 삼일PwC_핵심 또는 회계업계_일반 중에서 선택할 수 있습니다."
 )
 
-# 선택된 카테고리에 따라 그룹 목록 가져오기
-GROUPS = COMPANY_CATEGORIES[selected_category]
+# 선택된 카테고리에 따라 키워드 목록 가져오기
+SELECTED_KEYWORDS = KEYWORD_CATEGORIES[selected_category]
 
-# 카테고리 내 그룹들 표시 (선택 불가, 정보만)
-st.sidebar.markdown("**해당 카테고리의 그룹들:**")
-for group in GROUPS:
-    if group in COMPANY_GROUP_MAPPING:
-        companies_in_group = COMPANY_GROUP_MAPPING[group]
-        st.sidebar.info(f"📁 {group}: {len(companies_in_group)}개 기업")
+# 카테고리 내 키워드들 표시
+st.sidebar.markdown("**해당 카테고리의 키워드들:**")
+for keyword in SELECTED_KEYWORDS:
+    st.sidebar.info(f"🔑 {keyword}")
 
-# 기본 기업들 자동 선택 (사용자 선택 불가)
-selected_companies = []
-for group in GROUPS:
-    if group in COMPANY_GROUP_MAPPING:
-        companies_in_group = COMPANY_GROUP_MAPPING[group]
-        # 각 그룹에서 상위 3개 기업 자동 선택
-        selected_companies.extend(companies_in_group[:3] if len(companies_in_group) > 3 else companies_in_group)
+# 선택된 키워드들
+selected_keywords = SELECTED_KEYWORDS.copy()
 
-# 새로운 기업 추가 섹션 (간소화)
+# 선택된 키워드 정보 표시
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ℹ️ 선택된 기업 정보")
-st.sidebar.info(f"**자동 선택된 기업:** {len(selected_companies)}개")
+st.sidebar.markdown("### ℹ️ 선택된 키워드 정보")
+st.sidebar.info(f"**선택된 키워드:** {len(selected_keywords)}개")
 
-# 연관 키워드 관리 섹션 (간소화)
-st.sidebar.markdown("### 🔍 연관 키워드 정보")
+# 키워드별 연관 검색어 정보
+st.sidebar.markdown("### 🔍 키워드별 연관 검색어")
 
-# 세션 상태에 COMPANY_KEYWORD_MAP 및 COMPANY_GROUP_MAPPING 저장 (초기화)
+# 세션 상태에 COMPANY_KEYWORD_MAP 저장 (초기화)
 if 'company_keyword_map' not in st.session_state:
     st.session_state.company_keyword_map = COMPANY_KEYWORD_MAP.copy()
-    
-if 'company_group_mapping' not in st.session_state:
-    st.session_state.company_group_mapping = COMPANY_GROUP_MAPPING.copy()
 
-# 간단한 키워드 정보만 표시
-if selected_companies:
-    st.sidebar.info(f"**총 {len(selected_companies)}개 기업의 키워드가 자동 설정되었습니다.**")
+# 선택된 키워드들의 연관 검색어 표시
+if selected_keywords:
+    for keyword in selected_keywords:
+        related_keywords = st.session_state.company_keyword_map.get(keyword, [keyword])
+        st.sidebar.info(f"**{keyword}**: {', '.join(related_keywords[:5])}...")
 
-# 미리보기 버튼 - 간소화
+# 미리보기 버튼
 with st.sidebar.expander("🔍 검색 키워드 미리보기"):
-    if selected_companies:
-        st.info(f"**{len(selected_companies)}개 기업이 자동으로 선택되어 키워드가 설정되었습니다.**")
+    if selected_keywords:
+        st.info(f"**{len(selected_keywords)}개 키워드가 선택되어 검색됩니다.**")
+        for keyword in selected_keywords:
+            st.write(f"• {keyword}")
     else:
-        st.info("기업이 선택되지 않았습니다.")
+        st.info("키워드가 선택되지 않았습니다.")
 
-# 선택된 키워드들을 통합 (검색용)
-keywords = []
-for company in selected_companies:
-    # 기업명 자체와 연관 키워드 모두 추가 (세션 상태에서 가져옴)
-    company_keywords = st.session_state.company_keyword_map.get(company, [company])
-    keywords.extend(company_keywords)
+# 검색용 키워드 리스트 (선택된 키워드 + 연관 검색어)
+search_keywords = []
+for keyword in selected_keywords:
+    # 키워드 자체와 연관 검색어 모두 추가
+    related_keywords = st.session_state.company_keyword_map.get(keyword, [keyword])
+    search_keywords.extend(related_keywords)
 
 # 중복 제거
-keywords = list(set(keywords))
+search_keywords = list(set(search_keywords))
 
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 회사별 특화 기준 관리 섹션 (간소화)
+# 특화 기준 관리 섹션
 st.sidebar.markdown("### 🎯 특화 기준 정보")
 
-# 간단한 정보만 표시
-if selected_companies:
-    st.sidebar.info(f"**{len(selected_companies)}개 기업에 대한 특화 기준이 자동으로 설정되었습니다.**")
-else:
-    st.sidebar.info("기업이 선택되지 않았습니다.")
+# 삼일PwC 키워드인지 확인
+is_samil_pwc = any(keyword in ["삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"] for keyword in selected_keywords)
 
-# 미리보기 버튼 - 모든 회사별 특화 기준 확인 (간소화)
+if is_samil_pwc:
+    st.sidebar.success("**삼일PwC 특별 프롬프트가 적용됩니다!**")
+    st.sidebar.info("삼일PwC 관련 뉴스에 대해 상세한 포함/제외 기준이 적용됩니다.")
+else:
+    st.sidebar.info("**일반 회계법인 기준이 적용됩니다.**")
+
+# 미리보기 버튼
 with st.sidebar.expander("🔍 특화 기준 미리보기"):
-    if selected_companies:
-        st.info(f"**{len(selected_companies)}개 기업의 특화 기준이 자동으로 설정되었습니다.**")
+    if is_samil_pwc:
+        st.success("**삼일PwC 특별 기준 적용**")
+        st.write("• 상세한 포함/제외 기준")
+        st.write("• 중복 제거 기준")
+        st.write("• 경계 사례 판단 기준")
     else:
-        st.info("기업이 선택되지 않았습니다.")
+        st.info("**일반 회계법인 기준 적용**")
+        st.write("• 기본 제외/선택 기준")
 
 # 구분선 추가
 st.sidebar.markdown("---")
@@ -748,33 +750,118 @@ if st.button("뉴스 분석 시작", type="primary"):
     # 모든 키워드 분석 결과를 저장할 딕셔너리
     all_results = {}
     
-    for i, company in enumerate(selected_companies, 1):
-        with st.spinner(f"'{company}' 관련 뉴스를 수집하고 분석 중입니다..."):
-            # 해당 회사의 연관 키워드 확장 (세션 상태에서 가져옴)
-            company_keywords = st.session_state.company_keyword_map.get(company, [company])
+    # 삼일PwC 특별 프롬프트 적용 여부 확인
+    is_samil_pwc = any(keyword in ["삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"] for keyword in selected_keywords)
+    
+    # 프롬프트 선택
+    if is_samil_pwc:
+        analysis_prompt = f"""
+        {SAMIL_PWC_SPECIAL_PROMPT}
+        
+        [응답 형식]
+        다음과 같은 JSON 형식으로 응답해주세요:
+        
+        {{
+            "selected_news": [
+                {{
+                    "index": 1,
+                    "title": "뉴스 제목",
+                    "press": "언론사명",
+                    "date": "발행일자",
+                    "reason": "선정 사유",
+                    "keywords": ["키워드1", "키워드2"]
+                }},
+                ...
+            ],
+            "excluded_news": [
+                {{
+                    "index": 2,
+                    "title": "뉴스 제목",
+                    "reason": "제외 사유"
+                }},
+                ...
+            ]
+        }}
+        
+        [유효 언론사]
+        {valid_press_dict}
+        """
+        st.success("🚀 **삼일PwC 특별 프롬프트 적용됨**")
+    else:
+        analysis_prompt = f"""
+        당신은 회계법인의 전문 애널리스트입니다. 아래 뉴스 목록을 분석하여 회계법인 관점에서 가장 중요한 뉴스를 선별하세요. 
+        
+        [선택 기준]
+        {selection_criteria}
+        
+        [제외 대상]
+        {exclusion_criteria}
+        
+        [응답 요구사항]
+        1. 선택 기준에 부합하는 뉴스가 많다면 최대 3개까지 선택 가능합니다.
+        2. 선택 기준에 부합하는 뉴스가 없다면, 그 이유를 명확히 설명해주세요.
+        
+        [응답 형식]
+        다음과 같은 JSON 형식으로 응답해주세요:
+        
+        {{
+            "selected_news": [
+                {{
+                    "index": 1,
+                    "title": "뉴스 제목",
+                    "press": "언론사명",
+                    "date": "발행일자",
+                    "reason": "선정 사유",
+                    "keywords": ["키워드1", "키워드2"]
+                }},
+                ...
+            ],
+            "excluded_news": [
+                {{
+                    "index": 2,
+                    "title": "뉴스 제목",
+                    "reason": "제외 사유"
+                }},
+                ...
+            ]
+        }}
+        
+        [유효 언론사]
+        {valid_press_dict}
+        
+        [중복 처리 기준]
+        {duplicate_handling}
+        """
+        st.info("📊 **일반 회계법인 기준 적용됨**")
+    
+    # 키워드별 분석 실행
+    for i, keyword in enumerate(selected_keywords, 1):
+        with st.spinner(f"'{keyword}' 관련 뉴스를 수집하고 분석 중입니다..."):
+            # 해당 키워드의 연관 검색어 확장
+            related_keywords = st.session_state.company_keyword_map.get(keyword, [keyword])
             
-            # 연관 키워드 표시
-            st.write(f"'{company}' 연관 키워드로 검색 중: {', '.join(company_keywords)}")
+            # 연관 검색어 표시
+            st.write(f"'{keyword}' 연관 검색어로 검색 중: {', '.join(related_keywords)}")
             
             # 날짜/시간 객체 생성
             start_dt = datetime.combine(start_date, start_time)
             end_dt = datetime.combine(end_date, end_time)
             
-            # 뉴스 분석 서비스 호출 (신뢰할 수 있는 언론사에서만 수집)
+            # 뉴스 분석 서비스 호출
             try:
                 analysis_result = news_service.analyze_news(
-                    keywords=company_keywords,
+                    keywords=related_keywords,
                     start_date=start_dt,
                     end_date=end_dt,
-                    companies=[company],
-                    trusted_press=valid_press_config  # 신뢰할 수 있는 언론사 전달
+                    companies=[keyword],
+                    trusted_press=valid_press_config
                 )
                 
                 # 결과 저장
-                all_results[company] = analysis_result
+                all_results[keyword] = analysis_result
                 
                 # 결과 표시
-                st.success(f"'{company}' 분석 완료!")
+                st.success(f"'{keyword}' 분석 완료!")
                 st.write(f"수집된 뉴스: {analysis_result['collected_count']}개")
                 st.write(f"날짜 필터링 후: {analysis_result['date_filtered_count']}개")
                 st.write(f"언론사 필터링 후: {analysis_result['press_filtered_count']}개")
@@ -782,7 +869,7 @@ if st.button("뉴스 분석 시작", type="primary"):
                 
                 # 최종 선별된 뉴스 표시
                 if analysis_result['final_selection']:
-                    st.subheader(f"📰 {company} 최종 선별 뉴스")
+                    st.subheader(f"📰 {keyword} 최종 선별 뉴스")
                     for j, news in enumerate(analysis_result['final_selection'], 1):
                         with st.expander(f"{j}. {news.get('content', '제목 없음')}"):
                             st.write(f"**언론사:** {news.get('press', '알 수 없음')}")
@@ -790,15 +877,14 @@ if st.button("뉴스 분석 시작", type="primary"):
                             st.write(f"**URL:** {news.get('url', '')}")
                 
             except Exception as e:
-                st.error(f"'{company}' 분석 중 오류 발생: {str(e)}")
+                st.error(f"'{keyword}' 분석 중 오류 발생: {str(e)}")
                 continue
             
-            
             # 분석 완료 후 결과 요약
-            st.success(f"✅ {company} 분석 완료!")
+            st.success(f"✅ {keyword} 분석 완료!")
             
             # 이메일 내용에 추가
-            email_content += f"\n=== {company} 분석 결과 ===\n"
+            email_content += f"\n=== {keyword} 분석 결과 ===\n"
             email_content += f"수집된 뉴스: {analysis_result['collected_count']}개\n"
             email_content += f"날짜 필터링 후: {analysis_result['date_filtered_count']}개\n"
             email_content += f"언론사 필터링 후: {analysis_result['press_filtered_count']}개\n"
@@ -830,38 +916,29 @@ if st.button("뉴스 분석 시작", type="primary"):
             # 5단계: 최종 선택 결과 표시
             st.markdown("<div class='subtitle'>🔍 5단계: 최종 선택 결과</div>", unsafe_allow_html=True)
             
-            # 재평가 여부 확인 (is_reevaluated 필드 있으면 재평가된 것)
+            # 재평가 여부 확인
             was_reevaluated = analysis_result.get("is_reevaluated", False)
             
-            # 재평가 여부에 따라 메시지와 스타일 변경
             if was_reevaluated:
-                # 재평가가 수행된 경우 6단계 표시
                 st.warning("5단계에서 선정된 뉴스가 없어 6단계 재평가를 진행했습니다.")
                 st.markdown("<div class='subtitle'>🔍 6단계: 재평가 결과</div>", unsafe_allow_html=True)
                 st.markdown("### 📰 재평가 후 선정된 뉴스")
-                # 재평가 스타일 적용
                 news_style = "border-left: 4px solid #FFA500; background-color: #FFF8DC;"
                 reason_prefix = "<span style=\"color: #FFA500; font-weight: bold;\">재평가 후</span> 선별 이유: "
             else:
-                # 정상적으로 5단계에서 선정된 경우
                 st.markdown("### 📰 최종 선정된 뉴스")  
-                # 일반 스타일 적용
                 news_style = ""
                 reason_prefix = "선별 이유: "
             
             # 최종 선정된 뉴스 표시
             for news in analysis_result["final_selection"]:
-                # 날짜 형식 변환
-                
                 date_str = format_date(news.get('date', ''))
                 
                 try:
-                    # YYYY-MM-DD 형식으로 가정
                     date_obj = datetime.strptime(date_str, '%Y-%m-%d')
                     formatted_date = date_obj.strftime('%m/%d')
                 except Exception as e:
                     try:
-                        # GMT 형식 시도
                         date_obj = datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %Z')
                         formatted_date = date_obj.strftime('%m/%d')
                     except Exception as e:
@@ -870,7 +947,6 @@ if st.button("뉴스 분석 시작", type="primary"):
                 url = news.get('url', 'URL 정보 없음')
                 press = news.get('press', '언론사 정보 없음')
                 
-                # 뉴스 정보 표시
                 st.markdown(f"""
                     <div class="selected-news" style="{news_style}">
                         <div class="news-title-large">{news['title']} ({formatted_date})</div>
@@ -884,18 +960,14 @@ if st.button("뉴스 분석 시작", type="primary"):
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # 구분선 추가
                 st.markdown("---")
             
-
-            
-            # 디버그 정보 (간소화)
+            # 디버그 정보
             st.info("AI 분석이 완료되었습니다. 상세한 분석 과정은 로그에서 확인할 수 있습니다.")
             
             # 이메일 내용 추가
-            email_content += f"{i}. {company}\n"
+            email_content += f"{i}. {keyword}\n"
             for news in analysis_result["final_selection"]:
-                # 날짜 형식 변환
                 date_str = news.get('date', '')
                 try:
                     date_obj = datetime.strptime(date_str, '%Y-%m-%d')
@@ -911,7 +983,6 @@ if st.button("뉴스 분석 시작", type="primary"):
                 email_content += f"  - {news['title']} ({formatted_date}) {url}\n"
             email_content += "\n"
             
-            # 키워드 구분선 추가
             st.markdown("---")
 
     # 모든 키워드 분석이 끝난 후 이메일 미리보기 섹션 추가
@@ -934,16 +1005,16 @@ if st.button("뉴스 분석 시작", type="primary"):
         title = re.sub(r"\s*-\s*[가-힣A-Za-z0-9\s]+$", "", title).strip()
         return title
 
-    for i, company in enumerate(selected_companies, 1):
+    for i, keyword in enumerate(selected_keywords, 1):
         # HTML 버전에서 키워드를 파란색으로 표시
-        html_email_content += f"<div style='font-size: 14px; font-weight: bold; margin-top: 15px; margin-bottom: 10px; color: #0000FF;'>{i}. {company}</div>"
+        html_email_content += f"<div style='font-size: 14px; font-weight: bold; margin-top: 15px; margin-bottom: 10px; color: #0000FF;'>{i}. {keyword}</div>"
         html_email_content += "<ul style='list-style-type: none; padding-left: 20px; margin: 0;'>"
         
         # 텍스트 버전에서도 키워드 구분을 위해 줄바꿈 추가
-        plain_email_content += f"{i}. {company}\n"
+        plain_email_content += f"{i}. {keyword}\n"
         
         # 해당 키워드의 뉴스 가져오기
-        news_list = all_results.get(company, [])
+        news_list = all_results.get(keyword, [])
         
         if not news_list:
             # 최종 선정 뉴스가 0건인 경우 안내 문구 추가

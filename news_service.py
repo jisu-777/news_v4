@@ -203,6 +203,77 @@ class NewsService:
         
         return base_criteria + additional_criteria
 
+    def collect_news_unified_with_gpt_filtering(self, keywords: List[str], max_results: int = 200, 
+                                              trusted_press: Dict = None) -> List[Dict[str, Any]]:
+        """
+        전체 언론사에서 한번에 검색하고 GPT로 유효 언론사 필터링
+        
+        Args:
+            keywords: 검색할 키워드 리스트
+            max_results: 전체 키워드에서 최대 결과 수 (기본값: 200)
+            trusted_press: 신뢰할 수 있는 언론사 목록 (GPT 필터링 기준)
+            
+        Returns:
+            필터링된 뉴스 리스트
+        """
+        # OR 조건으로 모든 키워드를 한번에 검색
+        combined_query = " OR ".join(keywords)
+        print(f"통합 검색 시작: {combined_query}")
+        
+        # 전체 언론사에서 한번에 검색 (빠름)
+        all_news = self.google_news.search_all_press_unified(combined_query, max_results)
+        print(f"전체 검색 결과: {len(all_news)}개")
+        
+        if not all_news:
+            return []
+        
+        # GPT로 유효 언론사 필터링
+        if trusted_press:
+            print("GPT로 유효 언론사 필터링 시작...")
+            filtered_news = self._filter_by_gpt_trusted_press(all_news, trusted_press)
+            print(f"GPT 필터링 완료: {len(filtered_news)}개 뉴스 유지")
+            return filtered_news
+        else:
+            print("신뢰할 수 있는 언론사 목록이 없어 전체 결과 반환")
+            return all_news
+
+    def _filter_by_gpt_trusted_press(self, news_list: List[Dict], trusted_press: Dict) -> List[Dict]:
+        """
+        GPT를 사용하여 신뢰할 수 있는 언론사의 뉴스만 필터링
+        
+        Args:
+            news_list: 전체 뉴스 리스트
+            trusted_press: 신뢰할 수 있는 언론사 목록
+            
+        Returns:
+            필터링된 뉴스 리스트
+        """
+        # 신뢰할 수 있는 언론사명과 별칭들을 평면화
+        trusted_press_names = set()
+        for press_name, aliases in trusted_press.items():
+            trusted_press_names.add(press_name)
+            trusted_press_names.update(aliases)
+        
+        print(f"신뢰할 수 있는 언론사 수: {len(trusted_press_names)}")
+        
+        # 언론사명 매칭으로 필터링
+        filtered_news = []
+        for news in news_list:
+            press_name = news.get('press', '').strip()
+            
+            # 정확한 매칭 또는 부분 매칭 확인
+            is_trusted = False
+            for trusted_name in trusted_press_names:
+                if (trusted_name.lower() in press_name.lower() or 
+                    press_name.lower() in trusted_name.lower()):
+                    is_trusted = True
+                    break
+            
+            if is_trusted:
+                filtered_news.append(news)
+        
+        return filtered_news
+
 
 class NewsAnalysisService:
     """뉴스 AI 분석 서비스"""
@@ -225,11 +296,11 @@ class NewsAnalysisService:
         Returns:
             분석 결과 딕셔너리
         """
-        # 1. 뉴스 수집 (신뢰할 수 있는 언론사에서만)
-        print("=== 뉴스 수집 시작 ===")
-        collected_news = self.news_service.collect_news_by_keywords(
+        # 1. 뉴스 수집 (전체 언론사에서 한번에 검색하고 GPT로 필터링)
+        print("=== 뉴스 수집 시작 (통합 검색 + GPT 필터링) ===")
+        collected_news = self.news_service.collect_news_unified_with_gpt_filtering(
             keywords, 
-            max_results=100,  # 키워드당 100개로 제한
+            max_results=200,  # 전체에서 200개로 증가
             trusted_press=trusted_press
         )
         

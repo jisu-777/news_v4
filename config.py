@@ -598,3 +598,20 @@ COMPANY_ADDITIONAL_SELECTION_CRITERIA = {
 #    - 친환경 소재: 동소재, 전기차 부품, 탄소저감 소재
 #    - 사업구조 재편: LS엠트론, 계열 분할, 신성장 동력"""
 } 
+
+# 성능 최적화 설정
+PERFORMANCE_SETTINGS = {
+    "use_unified_search": True,  # 통합 검색 사용 여부
+    "max_news_per_search": 200,  # 검색당 최대 뉴스 수
+    "timeout_seconds": 15,        # HTTP 요청 타임아웃
+    "enable_parallel_processing": False,  # 병렬 처리 사용 여부 (향후 구현)
+    "cache_enabled": False,       # 캐싱 사용 여부 (향후 구현)
+}
+
+# 검색 전략 설정
+SEARCH_STRATEGY = {
+    "primary": "unified_search",  # 주요 검색 방식: unified_search
+    "fallback": "individual_search",  # 대체 검색 방식: individual_search
+    "batch_size": 50,             # 배치 처리 크기
+    "retry_count": 3,             # 재시도 횟수
+} 

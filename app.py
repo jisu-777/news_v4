@@ -433,7 +433,7 @@ def main():
     selected_categories = st.sidebar.multiselect(
         "카테고리를 선택하세요",
         options=list(KEYWORD_CATEGORIES.keys()),
-        default=["삼일PwC"],
+        default=list(KEYWORD_CATEGORIES.keys()),
         help="분석할 카테고리를 선택하세요"
     )
     
@@ -505,8 +505,6 @@ def main():
         <div style='text-align: center; margin: 50px 0;'>
             <h3>👋 PwC 뉴스 분석기에 오신 것을 환영합니다!</h3>
             <p>왼쪽 사이드바에서 분석할 카테고리와 날짜를 선택한 후 "뉴스 분석 시작" 버튼을 클릭하세요.</p>
-            <p><strong>주의:</strong> UI에서는 카테고리만 표시되며, 키워드는 AI 분석 시에만 사용됩니다.</p>
-
         </div>
         """, unsafe_allow_html=True)
 
@@ -552,8 +550,7 @@ def display_results(all_results, selected_categories):
                     table_data.append({
                         "제목": news.get('title', '제목 없음'),
                         "언론사": final_press or '언론사 정보 없음',
-                        "선별 이유": news.get('selection_reason', 'AI가 선별한 뉴스'),
-                        "링크": news.get('url', '링크 없음')
+                        "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
                     })
                 
                 # Streamlit 테이블로 표시

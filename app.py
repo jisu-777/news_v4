@@ -508,19 +508,19 @@ with col2:
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 키워드 선택 UI
-st.sidebar.markdown("### 🔍 분석할 키워드 선택")
+# 카테고리 선택 UI
+st.sidebar.markdown("### 🔍 분석할 카테고리 선택")
 
 # 테스트용 버튼 추가
 if st.sidebar.button("🧪 테스트 모드: 삼일PwC만 검색", type="secondary"):
     st.sidebar.success("테스트 모드 활성화: 삼일PwC만 검색합니다.")
 
-# 키워드 카테고리 복수 선택 (테스트용으로 삼일PwC_핵심만 기본 선택)
+# 카테고리 복수 선택 (테스트용으로 삼일PwC만 기본 선택)
 selected_categories = st.sidebar.multiselect(
-    "키워드 카테고리를 선택하세요 (복수 선택 가능)",
+    "분석할 카테고리를 선택하세요 (복수 선택 가능)",
     options=list(KEYWORD_CATEGORIES.keys()),
     default=["삼일PwC"],  # 테스트용으로 삼일PwC만 기본 선택
-    help="분석할 키워드 카테고리를 하나 이상 선택하세요. 테스트용으로 삼일PwC가 기본 선택됩니다."
+    help="분석할 카테고리를 하나 이상 선택하세요. 테스트용으로 삼일PwC가 기본 선택됩니다."
 )
 
 # 선택된 카테고리들의 모든 키워드 수집
@@ -662,9 +662,9 @@ if st.button("뉴스 분석 시작", type="primary"):
     """
     # st.info("📊 **회계법인 기준 적용됨**")  # UI에서 숨김
     
-    # 키워드별 분석 실행
-    for i, keyword in enumerate(selected_keywords, 1):
-        with st.spinner(f"뉴스를 수집하고 분석 중입니다..."):
+    # 카테고리별 분석 실행 (키워드별 개별 표시 제거)
+    with st.spinner(f"선택된 {len(selected_categories)}개 카테고리의 뉴스를 수집하고 분석 중입니다..."):
+        for i, keyword in enumerate(selected_keywords, 1):
             # 날짜/시간 객체 생성
             start_dt = datetime.combine(start_date, start_time)
             end_dt = datetime.combine(end_date, end_time)
@@ -682,82 +682,13 @@ if st.button("뉴스 분석 시작", type="primary"):
                 # 결과 저장
                 all_results[keyword] = analysis_result
                 
-                # 결과 표시 (UI에서 숨김) - 키워드별 개별 표시 제거
-                # st.success(f"'{keyword}' 분석 완료!")  # 키워드별 개별 표시 제거
-                
             except Exception as e:
                 st.error(f"'{keyword}' 분석 중 오류 발생: {str(e)}")
                 continue
             
-            # 분석 완료 후 결과 요약 (UI에서 숨김) - 중복 제거
+            # 키워드별 개별 결과 표시 제거 - 카테고리 통합 결과만 표시
             
-            # 이메일 내용에 추가 (카테고리 기반으로 구성)
-            # email_content += f"\n=== {keyword} 분석 결과 ===\n"  # 키워드별 개별 표시 제거
-            # email_content += f"수집된 뉴스: {analysis_result['collected_count']}개\n"
-            # email_content += f"날짜 필터링 후: {analysis_result['date_filtered_count']}개\n"
-            # email_content += f"언론사 필터링 후: {analysis_result['press_filtered_count']}개\n"
-            # email_content += f"최종 선별: {len(analysis_result['final_selection'])}개\n\n"
-            
-            # 디버깅 정보는 UI에서 숨김 (보류 뉴스, 유지 뉴스, 그룹핑 결과 등)
-            
-            st.markdown("---")
-            
-          
-            # 5단계: 최종 선택 결과 표시
-            st.markdown("<div class='subtitle'>🔍 최종 선택 결과</div>", unsafe_allow_html=True)
-            
-            # 재평가 여부 확인 (UI에서 숨김)
-            # was_reevaluated = analysis_result.get("is_reevaluated", False)
-            
-            # if was_reevaluated:
-            #     st.warning("5단계에서 선정된 뉴스가 없어 6단계 재평가를 진행했습니다.")
-            #     st.markdown("<div class='subtitle'>🔍 6단계: 재평가 결과</div>", unsafe_allow_html=True)
-            #     st.markdown("### 📰 재평가 후 선정된 뉴스")
-            #     news_style = "border-left: 4px solid #FFA500; background-color: #FFF8DC;"
-            #     reason_prefix = "<span style=\"color: #FFA500; font-weight: bold;\">재평가 후</span> 선별 이유: "
-            # else:
-            #     st.markdown("### 📰 최종 선정된 뉴스")  
-            #     news_style = ""
-            #     reason_prefix = "선별 이유: "
-            
-            # 기본 스타일과 프리픽스 설정 (재평가 여부와 관계없이)
-            news_style = ""
-            reason_prefix = "선별 이유: "
-            
-            # 최종 선정된 뉴스 표시
-            for news in analysis_result["final_selection"]:
-                date_str = format_date(news.get('date', ''))
-                
-                try:
-                    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                    formatted_date = date_obj.strftime('%m/%d')
-                except Exception as e:
-                    try:
-                        date_obj = datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %Z')
-                        formatted_date = date_obj.strftime('%m/%d')
-                    except Exception as e:
-                        formatted_date = date_str if date_str else '날짜 정보 없음'
-
-                url = news.get('url', 'URL 정보 없음')
-                press = news.get('press', '언론사 정보 없음')
-                
-                st.markdown(f"""
-                    <div class="selected-news" style="{news_style}">
-                        <div class="news-title-large">{news['title']} ({formatted_date})</div>
-                        <div class="news-url">🔗 <a href="{url}" target="_blank">{url}</a></div>
-                        <div class="selection-reason">
-                            • {reason_prefix}{news['reason']}
-                        </div>
-                        <div class="news-summary">
-                            • 키워드: {', '.join(news['keywords'])} | 관련 계열사: {', '.join(news['affiliates'])} | 언론사: {press}
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown("---")
-            
-          
-            # 이메일 내용 추가
+            # 이메일 내용에 추가 (키워드 정보 포함)
             email_content += f"{i}. {keyword}\n"
             for news in analysis_result["final_selection"]:
                 date_str = news.get('date', '')
@@ -774,8 +705,6 @@ if st.button("뉴스 분석 시작", type="primary"):
                 url = news.get('url', '')
                 email_content += f"  - {news['title']} ({formatted_date}) {url}\n"
             email_content += "\n"
-            
-            st.markdown("---")
 
     # 모든 키워드 분석이 끝난 후 카테고리별 통합 완료 메시지
     st.success(f"✅ 선택된 {len(selected_categories)}개 카테고리 분석 완료!")

@@ -27,7 +27,8 @@ COMPANY_GROUP_MAPPING = {
 # 카테고리별 활성화 설정
 ACTIVE_CATEGORIES = {
     "Anchor": True,
-   
+    "Growth": False,
+    "Whitespace": False
 }
 
 # Default to Test companies for testing
@@ -104,6 +105,16 @@ ADDITIONAL_PRESS_ALIASES = {
     "에너지신문": ["에너지신문", "energy-news", "energy-news.co.kr"],
     "이코노믹데일리": ["이코노믹데일리", "economidaily", "economidaily.com"]
 }
+
+# GPT 모델 설정
+GPT_MODELS = {
+    "GPT-4": "gpt-4",
+    "GPT-4 Turbo": "gpt-4-turbo-preview",
+    "GPT-3.5 Turbo": "gpt-3.5-turbo"
+}
+
+# 기본 GPT 모델
+DEFAULT_GPT_MODEL = "GPT-4"
 
 # System prompts
 SYSTEM_PROMPT_1 = """당신은 회계법인의 뉴스 분석 전문가입니다. 뉴스의 중요성을 판단하여 제외/보류/유지로 분류하는 작업을 수행합니다. 특히 회계법인의 관점에서 중요하지 않은 뉴스(예: 단순 홍보, CSR 활동, 이벤트 등)를 식별하고, 회계 감리나 재무 관련 이슈는 최대한 유지하도록 합니다.
@@ -262,7 +273,7 @@ SELECTION_CRITERIA = """다음 기준에 해당하는 뉴스가 있다면 반드
    - 지분 변동
    - 조직 개편"""
 
-# GPT Model options
+# GPT Model options (업데이트된 버전)
 GPT_MODELS = {
     #"openai.gpt-4.1-2025-04-14" : "chatpwc",#pwc
     "gpt-4.1": "최신모델",
@@ -274,7 +285,6 @@ GPT_MODELS = {
 }
 
 # Default GPT model to use
-#DEFAULT_GPT_MODEL = "gpt-4.1"
 DEFAULT_GPT_MODEL = "gpt-4.1" 
 
 # Email settings

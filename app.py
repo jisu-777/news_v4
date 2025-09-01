@@ -519,7 +519,8 @@ if st.button("뉴스 분석 시작", type="primary"):
                     keyword=keyword,
                     start_date=start_dt,
                     end_date=end_dt,
-                    trusted_press=valid_press_config
+                    trusted_press=valid_press_config,
+                    analysis_prompt=analysis_prompt
                 )
                 
                 # 결과 저장
@@ -684,23 +685,29 @@ if st.button("뉴스 분석 시작", type="primary"):
         title = re.sub(r"\s*-\s*[가-힣A-Za-z0-9\s]+$", "", title).strip()
         return title
 
-    for i, keyword in enumerate(selected_keywords, 1):
-        # HTML 버전에서 키워드를 파란색으로 표시
-        html_email_content += f"<div style='font-size: 14px; font-weight: bold; margin-top: 15px; margin-bottom: 10px; color: #0000FF;'>{i}. {keyword}</div>"
+    # 카테고리별로 뉴스 그룹화
+    for i, category in enumerate(selected_categories, 1):
+        # HTML 버전에서 카테고리를 파란색으로 표시
+        html_email_content += f"<div style='font-size: 14px; font-weight: bold; margin-top: 15px; margin-bottom: 10px; color: #0000FF;'>{i}. {category}</div>"
         html_email_content += "<ul style='list-style-type: none; padding-left: 20px; margin: 0;'>"
         
-        # 텍스트 버전에서도 키워드 구분을 위해 줄바꿈 추가
-        plain_email_content += f"{i}. {keyword}\n"
+        # 텍스트 버전에서도 카테고리 구분을 위해 줄바꿈 추가
+        plain_email_content += f"{i}. {category}\n"
         
-        # 해당 키워드의 뉴스 가져오기
-        news_list = all_results.get(keyword, [])
+        # 해당 카테고리의 모든 키워드 뉴스 수집
+        category_news = []
+        for keyword in KEYWORD_CATEGORIES.get(category, []):
+            if keyword in all_results:
+                news_list = all_results[keyword]
+                if isinstance(news_list, dict) and 'final_selection' in news_list:
+                    category_news.extend(news_list['final_selection'])
         
-        if not news_list:
+        if not category_news:
             # 최종 선정 뉴스가 0건인 경우 안내 문구 추가
             html_email_content += "<li style='margin-bottom: 8px; font-size: 14px; color: #888;'>AI 분석결과 금일자로 회계법인 관점에서 특별히 주목할 만한 기사가 없습니다.</li>"
             plain_email_content += "  - AI 분석결과 금일자로 회계법인 관점에서 특별히 주목할 만한 기사가 없습니다.\n"
         else:
-            for news in news_list:
+            for news in category_news:
                 # news 객체 유효성 검사
                 if not news or not isinstance(news, dict):
                     print(f"유효하지 않은 뉴스 객체: {news}")
@@ -1044,7 +1051,7 @@ def analyze_news_with_ai(news_list, analysis_prompt):
             "error": f"AI 분석 실패: {str(e)}"
         }
 
-def analyze_news_direct(keyword, start_date, end_date, trusted_press):
+def analyze_news_direct(keyword, start_date, end_date, trusted_press, analysis_prompt):
     """직접 구현한 뉴스 분석 함수"""
     
     # 1단계: RSS에서 뉴스 수집

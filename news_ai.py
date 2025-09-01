@@ -170,8 +170,8 @@ def collect_news(state: AgentState) -> AgentState:
         # 검색어 설정 - 문자열 또는 리스트 처리
         keyword = state.get("keyword", "삼성")
         
-        # 검색 결과 수는 키워드당 50개로 제한
-        max_results = 50
+        # 검색 결과 수는 키워드당 200개로 제한
+        max_results = 200
         
         # 날짜 범위 가져오기
         start_datetime = state.get("start_datetime")

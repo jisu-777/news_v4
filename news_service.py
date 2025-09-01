@@ -31,14 +31,14 @@ class NewsService:
     def __init__(self):
         self.google_news = GoogleNews()
     
-    def collect_news_by_keywords(self, keywords: List[str], max_results: int = 50, 
+    def collect_news_by_keywords(self, keywords: List[str], max_results: int = 200, 
                                 trusted_press: Dict = None) -> List[Dict[str, Any]]:
         """
         키워드 리스트로 뉴스 수집 (신뢰할 수 있는 언론사에서만)
         
         Args:
             keywords: 검색할 키워드 리스트
-            max_results: 각 키워드당 최대 결과 수 (기본값: 50)
+            max_results: 각 키워드당 최대 결과 수 (기본값: 200)
             trusted_press: 신뢰할 수 있는 언론사 목록
             
         Returns:
@@ -195,7 +195,7 @@ class NewsAnalysisService:
         print("=== 뉴스 수집 시작 ===")
         collected_news = self.news_service.collect_news_by_keywords(
             keywords, 
-            max_results=50,  # 키워드당 50개로 제한
+            max_results=200,  # 키워드당 200개로 제한
             trusted_press=trusted_press
         )
         

@@ -6,7 +6,7 @@ from typing import Dict, List
 # ✅ 무조건 첫 Streamlit 명령어
 st.set_page_config(
     page_title="PwC 뉴스 분석기",
-    page_icon="📊",
+    page_icon="logo_orange.png",
     layout="wide",
 )
 
@@ -20,18 +20,19 @@ from docx.shared import Pt, RGBColor, Inches
 import io
 from urllib.parse import urlparse
 from news_service import NewsAnalysisService
+import pandas as pd  # 엑셀 생성을 위해 pandas 추가
+import html  # HTML 엔티티 디코딩을 위해 추가
 
 # Import centralized configuration
 from config import (
-    KEYWORD_CATEGORIES,
+    COMPANY_CATEGORIES,
     COMPANY_KEYWORD_MAP,
-    KEYWORD_GROUP_MAPPING,
+    COMPANY_GROUP_MAPPING,
     TRUSTED_PRESS_ALIASES,
     ADDITIONAL_PRESS_ALIASES,
     SYSTEM_PROMPT_1,
     SYSTEM_PROMPT_2,
     SYSTEM_PROMPT_3,
-    SAMIL_PWC_SPECIAL_PROMPT,
     EXCLUSION_CRITERIA,
     DUPLICATE_HANDLING,
     SELECTION_CRITERIA, 
@@ -45,6 +46,26 @@ from config import (
 
 # 한국 시간대(KST) 정의
 KST = timezone(timedelta(hours=9))
+
+def clean_html_entities(text):
+    """HTML 엔티티를 정리하고 &quot; 등의 문제를 해결하는 함수"""
+    if not text:
+        return ""
+    
+    # HTML 엔티티 디코딩
+    cleaned_text = html.unescape(str(text))
+    
+    # 추가적인 정리 작업
+    cleaned_text = cleaned_text.replace('&quot;', '"')
+    cleaned_text = cleaned_text.replace('&amp;', '&')
+    cleaned_text = cleaned_text.replace('&lt;', '<')
+    cleaned_text = cleaned_text.replace('&gt;', '>')
+    cleaned_text = cleaned_text.replace('&apos;', "'")
+    
+    # 연속된 공백 정리
+    cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+    
+    return cleaned_text
 
 
 def parse_press_config(press_dict_str: str) -> Dict[str, List[str]]:
@@ -151,50 +172,50 @@ def create_word_document(keyword, final_selection, analysis=""):
     doc = docx.Document()
     
     # 제목 스타일 설정
-    title = doc.add_heading(f'PwC 뉴스 분석 보고서: {keyword}', level=0)
+    title = doc.add_heading(f'PwC 뉴스 분석 보고서: {clean_html_entities(keyword)}', level=0)
     for run in title.runs:
         run.font.color.rgb = RGBColor(208, 74, 2)  # PwC 오렌지 색상
     
     # 분석 요약 추가
     if analysis:
         doc.add_heading('회계법인 관점의 분석 결과', level=1)
-        doc.add_paragraph(analysis)
+        doc.add_paragraph(clean_html_entities(analysis))
     
     # 선별된 주요 뉴스 추가
     doc.add_heading('선별된 주요 뉴스', level=1)
     
     for i, news in enumerate(final_selection):
         p = doc.add_paragraph()
-        p.add_run(f"{i+1}. {news['title']}").bold = True
+        p.add_run(f"{i+1}. {clean_html_entities(news.get('title', ''))}").bold = True
         
         # 날짜 정보 추가
         date_str = news.get('date', '날짜 정보 없음')
         date_paragraph = doc.add_paragraph()
-        date_paragraph.add_run(f"날짜: {date_str}").italic = True
+        date_paragraph.add_run(f"날짜: {clean_html_entities(date_str)}").italic = True
         
         # 선정 사유 추가
         reason = news.get('reason', '')
         if reason:
-            doc.add_paragraph(f"선정 사유: {reason}")
+            doc.add_paragraph(f"선정 사유: {clean_html_entities(reason)}")
         
         # 키워드 추가
         keywords = news.get('keywords', [])
         if keywords:
-            doc.add_paragraph(f"키워드: {', '.join(keywords)}")
+            doc.add_paragraph(f"키워드: {', '.join([clean_html_entities(k) for k in keywords])}")
         
         # 관련 계열사 추가
         affiliates = news.get('affiliates', [])
         if affiliates:
-            doc.add_paragraph(f"관련 계열사: {', '.join(affiliates)}")
+            doc.add_paragraph(f"관련 계열사: {', '.join([clean_html_entities(a) for a in affiliates])}")
         
         # 언론사 추가
         press = news.get('press', '알 수 없음')
-        doc.add_paragraph(f"언론사: {press}")
+        doc.add_paragraph(f"언론사: {clean_html_entities(press)}")
         
         # URL 추가
         url = news.get('url', '')
         if url:
-            doc.add_paragraph(f"출처: {url}")
+            doc.add_paragraph(f"출처: {clean_html_entities(url)}")
         
         # 구분선 추가
         if i < len(final_selection) - 1:
@@ -416,14 +437,28 @@ with col1:
         st.error("로고 파일을 찾을 수 없습니다. 프로젝트 루트에 'logo_orange.png' 파일을 추가해주세요.")
 
 with col2:
-    st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
+    # 메인 타이틀 (로고 포함)
+    col1, col2, col3 = st.columns([1, 3, 1])
+    
+    with col1:
+        st.image("logo_orange.png", width=80)
+    
+    with col2:
+        st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
+    
+    with col3:
+        st.write("")  # 빈 공간
+    
     st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
+    
+    # 브라우저 탭 제목 설정
+    st.markdown("<script>document.title = 'PwC 뉴스 분석기';</script>", unsafe_allow_html=True)
 
 # 기본 선택 키워드 카테고리를 삼일PwC_핵심으로 설정
-DEFAULT_KEYWORDS = KEYWORD_CATEGORIES["삼일PwC_핵심"]
+    DEFAULT_KEYWORDS = COMPANY_CATEGORIES["Anchor"]
 
 # 사이드바 설정
-st.sidebar.title("🔍 분석 설정")
+    st.sidebar.title("🔍 PwC 뉴스 분석기")
 
 # 0단계: 기본 설정
 st.sidebar.markdown("### 📋 0단계: 기본 설정")
@@ -618,8 +653,8 @@ st.sidebar.markdown(f"""
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 검색 결과 수 - 키워드당 50개로 설정 (신뢰할 수 있는 언론사에서만)
-max_results = 50
+# 검색 결과 수 - 키워드당 200개로 설정 (신뢰할 수 있는 언론사에서만)
+max_results = 200
 
 # AI 프롬프트 설정 (사용자 편집 가능)
 st.sidebar.markdown("### 🤖 AI 프롬프트 설정")
@@ -750,89 +785,52 @@ if st.button("뉴스 분석 시작", type="primary"):
     # 모든 키워드 분석 결과를 저장할 딕셔너리
     all_results = {}
     
-    # 삼일PwC 특별 프롬프트 적용 여부 확인
-    is_samil_pwc = any(keyword in ["삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"] for keyword in selected_keywords)
+    # 분석 프롬프트 설정
+    analysis_prompt = f"""
+    당신은 회계법인의 전문 애널리스트입니다. 아래 뉴스 목록을 분석하여 회계법인 관점에서 가장 중요한 뉴스를 선별하세요. 
     
-    # 프롬프트 선택
-    if is_samil_pwc:
-        analysis_prompt = f"""
-        {SAMIL_PWC_SPECIAL_PROMPT}
-        
-        [응답 형식]
-        다음과 같은 JSON 형식으로 응답해주세요:
-        
-        {{
-            "selected_news": [
-                {{
-                    "index": 1,
-                    "title": "뉴스 제목",
-                    "press": "언론사명",
-                    "date": "발행일자",
-                    "reason": "선정 사유",
-                    "keywords": ["키워드1", "키워드2"]
-                }},
-                ...
-            ],
-            "excluded_news": [
-                {{
-                    "index": 2,
-                    "title": "뉴스 제목",
-                    "reason": "제외 사유"
-                }},
-                ...
-            ]
-        }}
-        
-        [유효 언론사]
-        {valid_press_dict}
-        """
-        st.success("🚀 **삼일PwC 특별 프롬프트 적용됨**")
-    else:
-        analysis_prompt = f"""
-        당신은 회계법인의 전문 애널리스트입니다. 아래 뉴스 목록을 분석하여 회계법인 관점에서 가장 중요한 뉴스를 선별하세요. 
-        
-        [선택 기준]
-        {selection_criteria}
-        
-        [제외 대상]
-        {exclusion_criteria}
-        
-        [응답 요구사항]
-        1. 선택 기준에 부합하는 뉴스가 많다면 최대 3개까지 선택 가능합니다.
-        2. 선택 기준에 부합하는 뉴스가 없다면, 그 이유를 명확히 설명해주세요.
-        
-        [응답 형식]
-        다음과 같은 JSON 형식으로 응답해주세요:
-        
-        {{
-            "selected_news": [
-                {{
-                    "index": 1,
-                    "title": "뉴스 제목",
-                    "press": "언론사명",
-                    "date": "발행일자",
-                    "reason": "선정 사유",
-                    "keywords": ["키워드1", "키워드2"]
-                }},
-                ...
-            ],
-            "excluded_news": [
-                {{
-                    "index": 2,
-                    "title": "뉴스 제목",
-                    "reason": "제외 사유"
-                }},
-                ...
-            ]
-        }}
-        
-        [유효 언론사]
-        {valid_press_dict}
-        
-        [중복 처리 기준]
-        {duplicate_handling}
-        """
-        st.info("📊 **일반 회계법인 기준 적용됨**")
+    [선택 기준]
+    {selection_criteria}
+    
+    [제외 대상]
+    {exclusion_criteria}
+    
+    [응답 요구사항]
+    1. 선택 기준에 부합하는 뉴스가 많다면 최대 3개까지 선택 가능합니다.
+    2. 선택 기준에 부합하는 뉴스가 없다면, 그 이유를 명확히 설명해주세요.
+    
+    [응답 형식]
+    다음과 같은 JSON 형식으로 응답해주세요:
+    
+    {{
+        "selected_news": [
+            {{
+                "index": 1,
+                "title": "뉴스 제목",
+                "press": "언론사명",
+                "date": "발행일자",
+                "reason": "선정 사유",
+                "keywords": ["키워드1", "키워드2"]
+            }},
+            ...
+        ],
+        "excluded_news": [
+            {{
+                "index": 2,
+                "title": "뉴스 제목",
+                "reason": "제외 사유"
+            }},
+            ...
+        ]
+    }}
+    
+    [유효 언론사]
+    {valid_press_dict}
+    
+    [중복 처리 기준]
+    {duplicate_handling}
+    """
+    st.info("📊 **회계법인 기준 적용됨**")
     
     # 키워드별 분석 실행
     for i, keyword in enumerate(selected_keywords, 1):
@@ -1055,6 +1053,149 @@ if st.button("뉴스 분석 시작", type="primary"):
     
     # 이메일 미리보기 표시
     st.markdown(f"<div class='email-preview'>{html_email_content}</div>", unsafe_allow_html=True)
+
+    # 워드 문서 다운로드 섹션 추가
+    st.markdown("<div class='subtitle'>📄 워드 문서 다운로드</div>", unsafe_allow_html=True)
+    
+    # 워드 문서 생성
+    if all_results:
+        try:
+            # 모든 키워드의 최종 선별 뉴스를 하나의 워드 문서로 생성
+            all_final_news = []
+            for keyword, result in all_results.items():
+                if 'final_selection' in result:
+                    for news in result['final_selection']:
+                        news_with_keyword = news.copy()
+                        news_with_keyword['keyword'] = keyword
+                        all_final_news.append(news_with_keyword)
+            
+            if all_final_news:
+                # 워드 문서 생성
+                doc = create_word_document("종합 뉴스 분석", all_final_news)
+                
+                # 현재 날짜로 파일명 생성
+                current_date = datetime.now().strftime("%Y%m%d")
+                filename = f"PwC_뉴스분석_{current_date}.docx"
+                
+                # 워드 문서 다운로드 버튼
+                bio = get_binary_file_downloader_html(doc, filename)
+                st.download_button(
+                    label="📥 워드 문서 다운로드 (.docx)",
+                    data=bio.getvalue(),
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                
+                st.success("워드 문서가 생성되었습니다. 위 버튼을 클릭하여 다운로드하세요.")
+            else:
+                st.warning("다운로드할 뉴스가 없습니다.")
+                
+        except Exception as e:
+            st.error(f"워드 문서 생성 중 오류가 발생했습니다: {str(e)}")
+    
+    # CSV 다운로드 섹션 (인코딩 문제 해결)
+    st.markdown("<div class='subtitle'>📊 CSV 다운로드 (인코딩 문제 해결)</div>", unsafe_allow_html=True)
+    
+    if all_results:
+        try:
+            # CSV용 데이터 준비
+            csv_data = []
+            for keyword, result in all_results.items():
+                if 'final_selection' in result:
+                    for news in result['final_selection']:
+                        csv_data.append({
+                            '키워드': clean_html_entities(keyword),
+                            '제목': clean_html_entities(news.get('title', '')),
+                            '날짜': clean_html_entities(news.get('date', '')),
+                            '언론사': clean_html_entities(news.get('press', '')),
+                            '선별이유': clean_html_entities(news.get('reason', '')),
+                            '키워드': clean_html_entities(', '.join(news.get('keywords', []))),
+                            '관련계열사': clean_html_entities(', '.join(news.get('affiliates', []))),
+                            'URL': clean_html_entities(news.get('url', ''))
+                        })
+            
+            if csv_data:
+                # DataFrame 생성
+                df = pd.DataFrame(csv_data)
+                
+                # CSV 파일 생성 (인코딩 문제 해결)
+                csv_buffer = io.StringIO()
+                # UTF-8 BOM을 추가하여 Excel에서 한글이 깨지지 않도록 함
+                df.to_csv(csv_buffer, index=False, encoding='utf-8-sig')
+                csv_content = csv_buffer.getvalue()
+                
+                # CSV 다운로드 버튼
+                current_date = datetime.now().strftime("%Y%m%d")
+                csv_filename = f"PwC_뉴스분석_{current_date}.csv"
+                
+                st.download_button(
+                    label="📥 CSV 다운로드 (.csv) - 인코딩 문제 해결됨",
+                    data=csv_content,
+                    file_name=csv_filename,
+                    mime="text/csv"
+                )
+                
+                st.success("CSV 파일이 생성되었습니다. UTF-8 BOM 인코딩으로 한글이 깨지지 않습니다.")
+                
+                # 미리보기 표시 (클릭 가능한 링크 포함)
+                st.markdown("**CSV 미리보기:**")
+                
+                # HTML 테이블로 표시하여 링크를 클릭 가능하게 만듦
+                html_table = df.to_html(
+                    index=False, 
+                    escape=False,  # HTML 이스케이프 방지
+                    formatters={
+                        'URL': lambda x: f'<a href="{x}" target="_blank" style="color: #0077b6; text-decoration: underline;">🔗 링크</a>' if x else ''
+                    }
+                )
+                
+                # HTML 테이블 스타일링
+                styled_html = f"""
+                <div style="overflow-x: auto;">
+                    <style>
+                        table {{
+                            border-collapse: collapse;
+                            width: 100%;
+                            font-family: Arial, sans-serif;
+                        }}
+                        th, td {{
+                            border: 1px solid #ddd;
+                            padding: 8px;
+                            text-align: left;
+                            vertical-align: top;
+                        }}
+                        th {{
+                            background-color: #f2f2f2;
+                            font-weight: bold;
+                        }}
+                        tr:nth-child(even) {{
+                            background-color: #f9f9f9;
+                        }}
+                        tr:hover {{
+                            background-color: #f5f5f5;
+                        }}
+                        a {{
+                            color: #0077b6;
+                            text-decoration: underline;
+                        }}
+                        a:hover {{
+                            color: #0056b3;
+                        }}
+                    </style>
+                    {html_table}
+                </div>
+                """
+                
+                st.markdown(styled_html, unsafe_allow_html=True)
+                
+                # 원본 DataFrame도 표시 (데이터 확인용)
+                st.markdown("**원본 데이터 (편집용):**")
+                st.dataframe(df)
+            else:
+                st.warning("CSV로 다운로드할 뉴스가 없습니다.")
+                
+        except Exception as e:
+            st.error(f"CSV 생성 중 오류가 발생했습니다: {str(e)}")
 
 
 

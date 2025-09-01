@@ -224,7 +224,11 @@ class NewsAnalysisService:
             "date_filtered_count": len(date_filtered_news),
             "press_filtered_count": len(press_filtered_news),
             "final_selection": analysis_result,
-            "raw_news": press_filtered_news
+            "raw_news": press_filtered_news,
+            "borderline_news": [],  # 보류 뉴스 (빈 리스트로 초기화)
+            "retained_news": [],    # 유지 뉴스 (빈 리스트로 초기화)
+            "grouped_news": [],     # 그룹핑된 뉴스 (빈 리스트로 초기화)
+            "is_reevaluated": False # 재평가 여부
         }
     
     def _perform_basic_analysis(self, news_data: List[Dict], companies: List[str] = None) -> List[Dict]:
@@ -240,7 +244,7 @@ class NewsAnalysisService:
         
         # 간단한 키워드 기반 필터링 (실제로는 AI가 판단해야 함)
         filtered_news = []
-        for news in news_data:
+        for i, news in enumerate(news_data):
             title = news.get('content', '').lower()
             
             # 제외 키워드 체크
@@ -251,6 +255,13 @@ class NewsAnalysisService:
                               '목표가', '목표주가']
             
             if not any(keyword in title for keyword in exclude_keywords):
-                filtered_news.append(news)
+                # 뉴스에 인덱스와 추가 정보 추가
+                news_copy = news.copy()
+                news_copy['index'] = i + 1
+                news_copy['title'] = news.get('content', '제목 없음')
+                news_copy['keywords'] = companies if companies else []
+                news_copy['affiliates'] = companies if companies else []
+                news_copy['reason'] = "기본 필터링을 통과한 뉴스"
+                filtered_news.append(news_copy)
         
         return filtered_news[:10]  # 최대 10개 반환

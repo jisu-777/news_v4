@@ -515,7 +515,7 @@ st.sidebar.info(f"**선택된 카테고리:** {len(selected_categories)}개")
 search_keywords = []
 for keyword in selected_keywords:
     # 키워드 자체와 연관 검색어 모두 추가
-    related_keywords = st.session_state.company_keyword_map.get(keyword, [keyword])
+    related_keywords = COMPANY_KEYWORD_MAP.get(keyword, [keyword])
     search_keywords.extend(related_keywords)
 
 # 중복 제거

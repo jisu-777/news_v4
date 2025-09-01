@@ -99,7 +99,165 @@ def format_date(date_str):
             
 # 워드 파일 생성 함수들 제거됨 (현재 사용하지 않음)
 
+def analyze_news_direct(keyword, start_date, end_date, trusted_press, analysis_prompt):
+    """직접 구현한 뉴스 분석 함수"""
+    
+    # 1단계: RSS에서 뉴스 수집
+    with st.spinner(f"'{keyword}' 관련 뉴스를 RSS에서 수집 중..."):
+        collected_news = collect_news_from_rss(keyword, start_date, end_date)
+    
+    if not collected_news:
+        return {
+            "collected_count": 0,
+            "final_selection": [],
+            "error": "수집된 뉴스가 없습니다."
+        }
+    
+    # 2단계: AI 분석 및 선별
+    with st.spinner(f"'{keyword}' 뉴스 분석 중..."):
+        analysis_result = analyze_news_with_ai(collected_news, analysis_prompt)
+    
+    # 3단계: 결과 정리
+    if "selected_news" in analysis_result:
+        # AI 응답을 기존 형식에 맞게 변환
+        final_selection = []
+        for selected in analysis_result["selected_news"]:
+            # 원본 뉴스에서 해당 항목 찾기
+            for news in collected_news:
+                if news['title'] == selected['title']:
+                    final_selection.append(news)
+                    break
+        
+        return {
+            "collected_count": len(collected_news),
+            "final_selection": final_selection,
+            "ai_analysis": analysis_result
+        }
+    else:
+        return {
+            "collected_count": len(collected_news),
+            "final_selection": [],
+            "error": analysis_result.get("error", "알 수 없는 오류")
+        }
 
+def clean_summary(summary):
+    """뉴스 요약 정리"""
+    # HTML 태그 제거
+    soup = BeautifulSoup(summary, 'html.parser')
+    clean_text = soup.get_text()
+    # 연속된 공백 정리
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    return clean_text
+
+def collect_news_from_rss(keyword, start_date, end_date):
+    """RSS 피드에서 뉴스 수집 - 모든 언론사에서 키워드 기반으로 수집"""
+    news_list = []
+    
+    # 주요 언론사 RSS 피드 목록 (한국 주요 언론사들)
+    rss_feeds = {
+        "조선일보": "https://www.chosun.com/arc/outboundfeeds/rss/",
+        "중앙일보": "https://rss.joins.com/joins_news_list.xml",
+        "동아일보": "https://www.donga.com/RSS/all.xml",
+        "한국경제": "https://www.hankyung.com/feed",
+        "매일경제": "https://www.mk.co.kr/rss/30000001/",
+        "연합뉴스": "https://www.yonhapnews.co.kr/feed/",
+        "파이낸셜뉴스": "https://www.fnnews.com/rss/rss.xml",
+        "머니투데이": "https://www.mt.co.kr/rss/",
+        "이데일리": "https://www.edaily.co.kr/rss/",
+        "아시아경제": "https://www.asiae.co.kr/rss/",
+        "뉴스핌": "https://www.newspim.com/rss/",
+        "뉴시스": "https://www.newsis.com/rss/",
+        "헤럴드경제": "https://biz.heraldcorp.com/rss/"
+    }
+    
+    for press_name, rss_url in rss_feeds.items():
+        try:
+            # RSS 피드 파싱
+            feed = feedparser.parse(rss_url)
+            
+            for entry in feed.entries:
+                # 제목과 요약에서 키워드 검색
+                title = entry.get('title', '')
+                summary = entry.get('summary', '')
+                
+                # 키워드가 제목이나 요약에 포함되어 있는지 확인
+                if keyword.lower() in title.lower() or keyword.lower() in summary.lower():
+                    # 날짜 파싱
+                    try:
+                        pub_date = datetime.now()  # 기본값
+                        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+                            pub_date = datetime(*entry.published_parsed[:6])
+                        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+                            pub_date = datetime(*entry.updated_parsed[:6])
+                    except:
+                        pub_date = datetime.now()
+                    
+                    # 날짜 범위 확인
+                    if start_date <= pub_date <= end_date:
+                        news_item = {
+                            'title': clean_html_entities(title),
+                            'summary': clean_html_entities(summary),
+                            'url': entry.get('link', ''),
+                            'press': press_name,
+                            'date': pub_date.strftime('%Y-%m-%d'),
+                            'keywords': [keyword],
+                            'affiliates': [],
+                            'reason': 'RSS에서 수집된 뉴스'
+                        }
+                        news_list.append(news_item)
+                        
+        except Exception as e:
+            st.warning(f"{press_name} RSS 피드 처리 중 오류: {str(e)}")
+            continue
+    
+    return news_list
+
+def analyze_news_with_ai(news_list, analysis_prompt):
+    """AI를 사용하여 뉴스 분석 및 선별"""
+    try:
+        # OpenAI API 호출 (실제 API 키는 환경변수에서 가져와야 함)
+        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        # 뉴스 목록을 JSON 형태로 변환
+        news_data = json.dumps([{
+            'title': news['title'],
+            'summary': news['summary'],
+            'press': news['press'],
+            'date': news['date']
+        } for news in news_list], ensure_ascii=False)
+        
+        # AI 분석 요청
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": analysis_prompt},
+                {"role": "user", "content": f"다음 뉴스 목록을 분석해주세요:\n\n{news_data}"}
+            ],
+            temperature=0.3
+        )
+        
+        # AI 응답 파싱
+        ai_response = response.choices[0].message.content
+        
+        # JSON 응답 파싱 시도
+        try:
+            result = json.loads(ai_response)
+            return result
+        except json.JSONDecodeError:
+            # JSON 파싱 실패 시 기본 구조 반환
+            return {
+                "selected_news": [],
+                "excluded_news": [],
+                "error": "AI 응답을 파싱할 수 없습니다."
+            }
+            
+    except Exception as e:
+        st.error(f"AI 분석 중 오류 발생: {str(e)}")
+        return {
+            "selected_news": [],
+            "excluded_news": [],
+            "error": f"AI 분석 실패: {str(e)}"
+        }
 
 # 커스텀 CSS
 st.markdown("""
@@ -993,99 +1151,4 @@ def clean_title(title):
     title = re.sub(r'\s*-\s*[가-힣A-Za-z0-9\s]+$', '', title).strip()
     return title
 
-def clean_summary(summary):
-    """뉴스 요약 정리"""
-    # HTML 태그 제거
-    soup = BeautifulSoup(summary, 'html.parser')
-    clean_text = soup.get_text()
-    # 연속된 공백 정리
-    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-    return clean_text
 
-def analyze_news_with_ai(news_list, analysis_prompt):
-    """AI를 사용하여 뉴스 분석 및 선별"""
-    try:
-        # OpenAI API 호출 (실제 API 키는 환경변수에서 가져와야 함)
-        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        
-        # 뉴스 목록을 JSON 형태로 변환
-        news_data = json.dumps([{
-            'title': news['title'],
-            'summary': news['summary'],
-            'press': news['press'],
-            'date': news['date']
-        } for news in news_list], ensure_ascii=False)
-        
-        # AI 분석 요청
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": analysis_prompt},
-                {"role": "user", "content": f"다음 뉴스 목록을 분석해주세요:\n\n{news_data}"}
-            ],
-            temperature=0.3
-        )
-        
-        # AI 응답 파싱
-        ai_response = response.choices[0].message.content
-        
-        # JSON 응답 파싱 시도
-        try:
-            result = json.loads(ai_response)
-            return result
-        except json.JSONDecodeError:
-            # JSON 파싱 실패 시 기본 구조 반환
-            return {
-                "selected_news": [],
-                "excluded_news": [],
-                "error": "AI 응답을 파싱할 수 없습니다."
-            }
-            
-    except Exception as e:
-        st.error(f"AI 분석 중 오류 발생: {str(e)}")
-        return {
-            "selected_news": [],
-            "excluded_news": [],
-            "error": f"AI 분석 실패: {str(e)}"
-        }
-
-def analyze_news_direct(keyword, start_date, end_date, trusted_press, analysis_prompt):
-    """직접 구현한 뉴스 분석 함수"""
-    
-    # 1단계: RSS에서 뉴스 수집
-    with st.spinner(f"'{keyword}' 관련 뉴스를 RSS에서 수집 중..."):
-        collected_news = collect_news_from_rss(keyword, start_date, end_date)
-    
-    if not collected_news:
-        return {
-            "collected_count": 0,
-            "final_selection": [],
-            "error": "수집된 뉴스가 없습니다."
-        }
-    
-    # 2단계: AI 분석 및 선별
-    with st.spinner(f"'{keyword}' 뉴스 분석 중..."):
-        analysis_result = analyze_news_with_ai(collected_news, analysis_prompt)
-    
-    # 3단계: 결과 정리
-    if "selected_news" in analysis_result:
-        # AI 응답을 기존 형식에 맞게 변환
-        final_selection = []
-        for selected in analysis_result["selected_news"]:
-            # 원본 뉴스에서 해당 항목 찾기
-            for news in collected_news:
-                if news['title'] == selected['title']:
-                    final_selection.append(news)
-                    break
-        
-        return {
-            "collected_count": len(collected_news),
-            "final_selection": final_selection,
-            "ai_analysis": analysis_result
-        }
-    else:
-        return {
-            "collected_count": len(collected_news),
-            "final_selection": [],
-            "error": analysis_result.get("error", "알 수 없는 오류")
-        }

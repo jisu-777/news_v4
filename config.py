@@ -8,30 +8,30 @@ This file contains shared variables and configurations used across the news clip
 Centralizing these variables makes maintenance easier and ensures consistency.
 """
 
-# 키워드 카테고리 정의 - 회계법인 중심으로 축소
-KEYWORD_CATEGORIES = {
-    "삼일PwC_핵심": [
-        "삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"
-    ],
-    "회계업계_일반": [
-        "Big4", "회계법인", "회계업계", "감사업계", "삼정KPMG", "삼정회계", "KPMG삼정", "딜로이트안진", "안진회계", "딜로이트코리아", "한영회계", "EY한영", "EY코리아"
+# Company categories and definitions
+COMPANY_CATEGORIES = {
+    "Anchor": [
+        "주요기업", "산업동향", "경쟁사", "전문영역", "삼일PwC"
     ]
 }
 
-# 키워드 그룹별 매핑
-KEYWORD_GROUP_MAPPING = {
-    "삼일PwC_핵심": ["삼일회계", "삼일PwC", "PwC삼일", "PwC코리아"],
-    "회계업계_일반": ["Big4", "회계법인", "회계업계", "감사업계", "삼정KPMG", "삼정회계", "KPMG삼정", "딜로이트안진", "안진회계", "딜로이트코리아", "한영회계", "EY한영", "EY코리아"]
+# 그룹과 회사 연결 매핑
+COMPANY_GROUP_MAPPING = {
+    "주요기업": ["삼성", "SK", "현대차", "LG", "포스코", "롯데", "한화", "카카오", "네이버"],
+    "산업동향": ["반도체", "배터리", "자동차", "철강", "석유화학", "조선", "건설", "바이오", "방산", "디스플레이", "AI", "에너지"],
+    "경쟁사": ["한영EY", "삼정KPMG", "Deloitte"],
+    "전문영역": ["M&A", "경제", "인사동정", "금융", "세제정책"],
+    "삼일PwC": ["삼일 및 PwC 관련"]
 }
 
 # 카테고리별 활성화 설정
 ACTIVE_CATEGORIES = {
-    "삼일PwC": True,
+    "Anchor": True,
    
 }
 
 # Default to Test companies for testing
-DEFAULT_COMPANIES = KEYWORD_CATEGORIES["삼일PwC_핵심"]  # 삼일PwC 핵심 키워드 사용
+DEFAULT_COMPANIES = COMPANY_CATEGORIES["Anchor"]  # 테스트용으로 변경
 
 # Company keyword map - mapping companies to their related keywords
 COMPANY_KEYWORD_MAP = {
@@ -106,10 +106,10 @@ ADDITIONAL_PRESS_ALIASES = {
 }
 
 # System prompts
-SYSTEM_PROMPT_1 = """당신은 회계법인의 뉴스 분석 전문가입니다. 뉴스의 중요성을 판단하여 제외/보류/유지로 분류하는 작업을 수행합니다. 특히 회계법인의 관점에서 중요하지 않은 뉴스(예: 단순 홍보, CSR 활동, 이벤트 등)를 식별하고, 회계 감리나 재무 관련 이슈는 최대한 유지하도록 합니다."""
+SYSTEM_PROMPT_1 = """당신은 회계법인의 뉴스 분석 전문가입니다. 뉴스의 중요성을 판단하여 제외/보류/유지로 분류하는 작업을 수행합니다. 특히 회계법인의 관점에서 중요하지 않은 뉴스(예: 단순 홍보, CSR 활동, 이벤트 등)를 식별하고, 회계 감리나 재무 관련 이슈는 최대한 유지하도록 합니다.
 
-# 삼일PwC 특별 프롬프트 (반드시 이 키워드에만 적용)
-SAMIL_PWC_SPECIAL_PROMPT = """당신은 삼일PwC 관련 뉴스를 분석하는 전문가입니다. 다음 기준에 따라 뉴스를 분류하세요:
+[특별 처리 사항]
+"삼일 및 PwC 관련" 카테고리의 뉴스는 다음 특별 기준을 적용하세요:
 
 [포함되어야 하는 기사 (Y)]
 1. 삼일회계법인/삼일PwC/PwC 자체가 기사의 주제인 경우
@@ -156,16 +156,6 @@ SAMIL_PWC_SPECIAL_PROMPT = """당신은 삼일PwC 관련 뉴스를 분석하는 
    - 외국어 기사: 한국어/영어를 제외한 해외 기사
    - 단순 언급만: 주요 주제에 직접 관련되지 않고 언급만 된 기사
 
-[중복 제거 기준]
-우선순위 (상위가 우선)
-1. 매체 우선순위: 조선일보 > 중앙일보 > 동아일보 > 한국경제 > 매일경제 > 연합뉴스 등 대형·원문 보도 매체
-2. 기사 품질: 속보성, 제목 및 내용 명확성
-3. 시간 순서: 최초 보도 날짜
-
-[처리 방식]
-- 날짜별·매체별로 가장 대표성 있는 기사 1건만 남김
-- 동일 이슈 판단: 헤드라인·본문 유사성 검토
-
 [경계 사례 판단 기준]
 명확한 포함 (Y) 사례
 - a. 컨소시엄 명단: 여러 기관 중 한 멤버로 이름만 열거 → Y
@@ -189,6 +179,8 @@ SAMIL_PWC_SPECIAL_PROMPT = """당신은 삼일PwC 관련 뉴스를 분석하는 
 [최종 검토]
 - 자동 필터링 후 사람이 경계 사례 최종 판단
 - 애매한 경우 포함 쪽으로 판단 후 추후 재검토"""
+
+
 
 SYSTEM_PROMPT_2 = """당신은 뉴스 분석 전문가입니다. 유사한 뉴스를 그룹화하고 대표성을 갖춘 기사를 선택하는 작업을 수행합니다. 같은 사안에 대해 숫자, 기업 ,계열사, 맥락, 주요 키워드 등이 유사하면 중복으로 판단합니다. 언론사의 신뢰도와 기사의 상세도를 고려하여 대표 기사를 선정합니다."""
 
@@ -316,6 +308,55 @@ TEAMS_SETTINGS = {
     "title": "[PwC] 뉴스 분석 보고서",
     "subtitle": "AI가 선별한 오늘의 주요 뉴스",
     "use_plain_text": True  # False면 HTML 사용, True면 텍스트 사용
+}
+
+# Teams 채널별 설정 (카테고리별)
+TEAMS_CHANNEL_SETTINGS = {
+    "Anchor": {
+        "groupId": "",  # Anchor 팀 그룹 ID
+        "channels": {
+            "삼일 및 PwC 관련": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "회계": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "세제·정책": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "주요 기업": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "산업 동향": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "금융": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "M&A 및 자본시장": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "경제": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "인사 동정": {
+                "channelId": "",
+                "parentMessageId": ""
+            },
+            "경쟁사": {
+                "channelId": "",
+                "parentMessageId": ""
+            }
+        }
+    }
 }
 
 # SharePoint List 설정 (카테고리별 -> 회사별)

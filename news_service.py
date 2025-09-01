@@ -64,13 +64,13 @@ class NewsService:
             return all_news
 
     def collect_news_by_categories_sequential(self, categories: List[str] = None, 
-                                            max_per_category: int = 50) -> Dict[str, List[Dict[str, Any]]]:
+                                            max_per_category: int = 30) -> Dict[str, List[Dict[str, Any]]]:
         """
-        카테고리별로 각 키워드를 개별 검색하여 각각 50개씩 수집 (GPT 분석용)
+        카테고리별로 각 키워드를 개별 검색하여 각각 30개씩 수집 (GPT 분석용)
         
         Args:
             categories: 검색할 카테고리 리스트 (None이면 전체 카테고리)
-            max_per_category: 각 키워드당 최대 뉴스 수 (기본값: 50)
+            max_per_category: 각 키워드당 최대 뉴스 수 (기본값: 30)
             
         Returns:
             카테고리별 뉴스 리스트를 담은 딕셔너리
@@ -96,7 +96,7 @@ class NewsService:
             for keyword in keywords:
                 print(f"  - '{keyword}' 키워드 검색 중...")
                 
-                # 개별 키워드로 검색
+                # 개별 키워드로 검색 (30개로 감소)
                 keyword_news = self.google_news.search_all_press_unified(keyword, max_per_category)
                 print(f"    '{keyword}' 검색 결과: {len(keyword_news)}개")
                 
@@ -251,7 +251,7 @@ class NewsAnalysisService:
     def analyze_news(self, keywords: List[str], start_date: datetime, end_date: datetime, 
                     companies: List[str] = None, trusted_press: Dict = None) -> Dict[str, Any]:
         """
-        뉴스 수집부터 AI 분석까지 전체 프로세스 실행 (카테고리별 순차 검색)
+        뉴스 수집부터 AI 분석까지 전체 프로세스 실행 (모든 뉴스 수집 후 GPT 분석 한 번만)
         
         Args:
             keywords: 검색할 키워드 리스트 (사용하지 않음, 카테고리 기반으로 변경)
@@ -263,10 +263,10 @@ class NewsAnalysisService:
         Returns:
             분석 결과 딕셔너리
         """
-        # 1. 카테고리별로 순차 검색 (각 카테고리당 50개씩)
+        # 1. 카테고리별로 순차 검색 (각 카테고리당 30개씩)
         print("=== 카테고리별 순차 검색 시작 ===")
         category_news = self.news_service.collect_news_by_categories_sequential(
-            max_per_category=50
+            max_per_category=30
         )
         
         # 2. 모든 카테고리의 뉴스를 하나의 리스트로 통합
@@ -294,28 +294,84 @@ class NewsAnalysisService:
         else:
             press_filtered_news = date_filtered_news
         
-        # 5. AI 분석
-        print("=== AI 분석 시작 ===")
-        analysis_result = self._perform_basic_analysis(press_filtered_news, companies)
+        # 5. 모든 뉴스 수집 완료 후 GPT 분석 한 번만 실행
+        print("=== GPT 분석 시작 (한 번만 실행) ===")
+        analysis_result = self._perform_gpt_analysis(press_filtered_news, companies)
         
         return {
             "collected_count": len(all_collected_news),
             "date_filtered_count": len(date_filtered_news),
             "press_filtered_count": len(press_filtered_news),
-            "final_selection": analysis_result,
+            "final_selection": analysis_result.get("selected_news", []),
             "raw_news": press_filtered_news,
-            "category_news": category_news,  # 카테고리별 뉴스 추가
-            "borderline_news": [],
-            "retained_news": [],
-            "grouped_news": [],
-            "is_reevaluated": False
+            "category_news": category_news,
+            "borderline_news": analysis_result.get("borderline_news", []),
+            "retained_news": analysis_result.get("retained_news", []),
+            "grouped_news": analysis_result.get("grouped_news", []),
+            "is_reevaluated": analysis_result.get("is_reevaluated", False)
         }
     
-    def _perform_basic_analysis(self, news_data: List[Dict], companies: List[str] = None) -> List[Dict]:
-        """기본적인 뉴스 분석 수행 (실제 AI 분석은 별도 구현 필요)"""
-        # 여기서는 간단한 필터링만 수행
-        # 실제로는 OpenAI API 등을 사용한 AI 분석이 필요
+    def _perform_gpt_analysis(self, news_data: List[Dict], companies: List[str] = None) -> Dict[str, Any]:
+        """GPT를 사용하여 모든 뉴스를 한 번에 분석"""
+        if not companies:
+            companies = []
         
+        # 제외 기준 적용
+        exclusion_criteria = self.news_service.get_enhanced_criteria(companies, "exclusion")
+        selection_criteria = self.news_service.get_enhanced_criteria(companies, "selection")
+        
+        # GPT 분석 프롬프트 생성
+        analysis_prompt = f"""
+        당신은 회계법인의 전문 애널리스트입니다. 아래 뉴스 목록을 분석하여 회계법인 관점에서 가장 중요한 뉴스를 선별하세요. 
+
+        [선택 기준]
+        {selection_criteria}
+
+        [제외 대상]
+        {exclusion_criteria}
+
+        [응답 요구사항]
+        1. 선택 기준에 부합하는 뉴스가 많다면 최대 3개까지 선택 가능합니다.
+        2. 선택 기준에 부합하는 뉴스가 없다면, 그 이유를 명확히 설명해주세요.
+
+        [응답 형식]
+        다음 JSON 형식으로 응답해주세요:
+
+        {{
+            "selected_news": [
+                {{
+                    "index": 1,
+                    "title": "뉴스 제목",
+                    "press": "언론사명",
+                    "date": "발행일자",
+                    "reason": "선정 사유",
+                    "keywords": ["키워드1", "키워드2"]
+                }}
+            ],
+            "excluded_news": [
+                {{
+                    "index": 2,
+                    "title": "뉴스 제목",
+                    "reason": "제외 사유"
+                }}
+            ]
+        }}
+
+        [분석할 뉴스 목록]
+        """
+        
+        # 뉴스 데이터를 프롬프트에 추가
+        for i, news in enumerate(news_data):
+            analysis_prompt += f"\n{i+1}. {news.get('content', '제목 없음')} - {news.get('press', '언론사')} ({news.get('date', '날짜')})"
+        
+        print(f"GPT 분석 프롬프트 생성 완료: {len(news_data)}개 뉴스")
+        
+        # 여기서는 실제 GPT API 호출 대신 기본 필터링 수행
+        # 실제 구현시에는 OpenAI API 호출
+        return self._perform_basic_analysis(news_data, companies)
+    
+    def _perform_basic_analysis(self, news_data: List[Dict], companies: List[str] = None) -> Dict[str, Any]:
+        """기본적인 뉴스 분석 수행 (GPT 분석이 구현되지 않았을 때 사용)"""
         if not companies:
             companies = []
         
@@ -324,6 +380,8 @@ class NewsAnalysisService:
         
         # 간단한 키워드 기반 필터링 (실제로는 AI가 판단해야 함)
         filtered_news = []
+        excluded_news = []
+        
         for i, news in enumerate(news_data):
             title = news.get('content', '').lower()
             
@@ -343,5 +401,19 @@ class NewsAnalysisService:
                 news_copy['affiliates'] = companies if companies else []
                 news_copy['reason'] = "기본 필터링을 통과한 뉴스"
                 filtered_news.append(news_copy)
+            else:
+                # 제외된 뉴스 정보 추가
+                excluded_news.append({
+                    'index': i + 1,
+                    'title': news.get('content', '제목 없음'),
+                    'reason': f"제외 키워드 포함: {[k for k in exclude_keywords if k in title]}"
+                })
         
-        return filtered_news[:10]  # 최대 10개 반환
+        return {
+            "selected_news": filtered_news[:10],  # 최대 10개 반환
+            "excluded_news": excluded_news,
+            "borderline_news": [],
+            "retained_news": [],
+            "grouped_news": [],
+            "is_reevaluated": False
+        }

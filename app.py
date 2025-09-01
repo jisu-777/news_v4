@@ -542,35 +542,14 @@ if st.button("뉴스 분석 시작", type="primary"):
             # 이메일 내용에 추가
             email_content += f"\n=== {keyword} 분석 결과 ===\n"
             email_content += f"수집된 뉴스: {analysis_result['collected_count']}개\n"
-            email_content += f"날짜 필터링 후: {analysis_result['date_filtered_count']}개\n"
-            email_content += f"언론사 필터링 후: {analysis_result['press_filtered_count']}개\n"
-            email_content += f"최종 선별: {len(analysis_result['final_selection'])}개\n\n"
+
+     
+          
             
-            # 보류 뉴스
-            with st.expander("⚠️ 보류 뉴스"):
-                for news in analysis_result["borderline_news"]:
-                    st.markdown(f"<div class='excluded-news'>[{news['index']}] {news['title']}<br/>└ {news['reason']}</div>", unsafe_allow_html=True)
-            
-            # 유지 뉴스
-            with st.expander("✅ 유지 뉴스"):
-                for news in analysis_result["retained_news"]:
-                    st.markdown(f"<div class='excluded-news'>[{news['index']}] {news['title']}<br/>└ {news['reason']}</div>", unsafe_allow_html=True)
-            
-            # 4단계: 그룹핑 결과 표시
-            st.markdown("<div class='subtitle'>🔍 4단계: 뉴스 그룹핑 결과</div>", unsafe_allow_html=True)
-            
-            with st.expander("📋 그룹핑 결과 보기"):
-                for group in analysis_result["grouped_news"]:
-                    st.markdown(f"""
-                    <div class="analysis-section">
-                        <h4>그룹 {group['indices']}</h4>
-                        <p>선택된 기사: {group['selected_index']}</p>
-                        <p>선정 이유: {group['reason']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
+        
             
             # 5단계: 최종 선택 결과 표시
-            st.markdown("<div class='subtitle'>🔍 5단계: 최종 선택 결과</div>", unsafe_allow_html=True)
+            st.markdown("<div class='subtitle'>🔍 최종 선택 결과</div>", unsafe_allow_html=True)
             
             # 재평가 여부 확인
             was_reevaluated = analysis_result.get("is_reevaluated", False)
@@ -618,9 +597,7 @@ if st.button("뉴스 분석 시작", type="primary"):
                 
                 st.markdown("---")
             
-            # 디버그 정보
-            st.info("AI 분석이 완료되었습니다. 상세한 분석 과정은 로그에서 확인할 수 있습니다.")
-            
+          
             # 이메일 내용 추가
             email_content += f"{i}. {keyword}\n"
             for news in analysis_result["final_selection"]:

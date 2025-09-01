@@ -465,7 +465,7 @@ st.sidebar.markdown("### 📋 0단계: 기본 설정")
 
 # 유효 언론사 설정
 valid_press_dict = st.sidebar.text_area(
-    "📰 유효 언론사 설정",
+    "📰 유효 언론사 설정 ",
     value="""조선일보: ["조선일보", "chosun", "chosun.com"]
     중앙일보: ["중앙일보", "joongang", "joongang.co.kr", "joins.com"]
     동아일보: ["동아일보", "donga", "donga.com"]

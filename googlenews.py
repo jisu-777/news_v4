@@ -28,8 +28,11 @@ class GoogleNews:
         Returns:
             List[Dict[str, str]]: URL, 제목, 언론사, 발행일을 포함한 딕셔너리 리스트
         """
-        # 전체 언론사에서 검색 (언론사별 개별 검색 제거)
-        return self._search_all_press(keyword, k)
+        # 통합 검색만 사용 (순차 검색 제거)
+        if keyword:
+            return self.search_all_press_unified(keyword, k)
+        else:
+            return self.search_all_press_unified("", k)
 
     def search_by_keywords_or(self, keywords_query: str, k: int = 100, 
                              trusted_press: Optional[Dict] = None) -> List[Dict[str, str]]:
@@ -44,8 +47,8 @@ class GoogleNews:
         Returns:
             List[Dict[str, str]]: URL, 제목, 언론사, 발행일을 포함한 딕셔너리 리스트
         """
-        # 전체 언론사에서 OR 검색 (언론사별 개별 검색 제거)
-        return self._search_all_press_or(keywords_query, k)
+        # 통합 검색만 사용 (순차 검색 제거)
+        return self.search_all_press_unified(keywords_query, k)
 
     def search_all_press_unified(self, keywords_query: str, k: int = 200) -> List[Dict[str, str]]:
         """
@@ -105,100 +108,4 @@ class GoogleNews:
             
         except Exception as e:
             print(f"통합 뉴스 검색 중 오류 발생: {str(e)}")
-            return []
-
-    def _search_all_press(self, keyword: Optional[str], k: int) -> List[Dict[str, str]]:
-        """
-        기존 로직: 전체 언론사에서 뉴스 검색
-        """
-        # URL 생성
-        if keyword:
-            encoded_keyword = quote(keyword)
-            url = f"{self.base_url}/search?q={encoded_keyword}&hl=ko&gl=KR&ceid=KR:ko"
-        else:
-            url = f"{self.base_url}?hl=ko&gl=KR&ceid=KR:ko"
-        
-        try:
-            # 뉴스 데이터 파싱
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'xml')
-            entries = soup.find_all('item')
-            
-            # 수집된 뉴스가 없는 경우
-            if not entries:
-                print(f"'{keyword}' 관련 뉴스를 찾을 수 없습니다.")
-                return []
-                
-            # 결과 가공
-            result = []
-            for entry in entries[:k]:
-                title_elem = entry.find('title')
-                link_elem = entry.find('link')
-                pub_date_elem = entry.find('pubDate')
-                source_elem = entry.find('source')
-                
-                if title_elem and link_elem:
-                    # source 태그에서 직접 언론사 정보 추출
-                    press = source_elem.text.strip() if source_elem else '알 수 없음'
-                    
-                    result.append({
-                        "url": link_elem.text.strip(), 
-                        "content": title_elem.text.strip(),  # 제목은 그대로 사용
-                        "press": press,
-                        "date": pub_date_elem.text.strip() if pub_date_elem else '날짜 정보 없음'
-                    })
-
-            return result
-            
-        except Exception as e:
-            print(f"뉴스 검색 중 오류 발생: {str(e)}")
-            return []
-
-    def _search_all_press_or(self, keywords_query: str, k: int) -> List[Dict[str, str]]:
-        """
-        전체 언론사에서 OR 조건으로 뉴스 검색
-        """
-        # OR 검색 URL 생성
-        encoded_query = quote(f"({keywords_query})")
-        url = f"{self.base_url}/search?q={encoded_query}&hl=ko&gl=KR&ceid=KR:ko"
-        
-        try:
-            # 뉴스 데이터 파싱
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            
-            soup = BeautifulSoup(response.content, 'xml')
-            entries = soup.find_all('item')
-            
-            # 수집된 뉴스가 없는 경우
-            if not entries:
-                print(f"OR 검색 '{keywords_query}' 관련 뉴스를 찾을 수 없습니다.")
-                return []
-                
-            # 결과 가공
-            result = []
-            for entry in entries[:k]:
-                title_elem = entry.find('title')
-                link_elem = entry.find('link')
-                pub_date_elem = entry.find('pubDate')
-                source_elem = entry.find('source')
-                
-                if title_elem and link_elem:
-                    # source 태그에서 직접 언론사 정보 추출
-                    press = source_elem.text.strip() if source_elem else '알 수 없음'
-                    
-                    result.append({
-                        "url": link_elem.text.strip(), 
-                        "content": title_elem.text.strip(),  # 제목은 그대로 사용
-                        "press": press,
-                        "date": pub_date_elem.text.strip() if pub_date_elem else '날짜 정보 없음'
-                    })
-
-            print(f"전체 언론사에서 OR 검색으로 {len(result)}개 뉴스 수집 완료")
-            return result
-            
-        except Exception as e:
-            print(f"OR 검색 중 오류 발생: {str(e)}")
             return []

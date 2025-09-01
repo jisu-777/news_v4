@@ -21,7 +21,8 @@ from config import (
     SELECTION_CRITERIA,
     COMPANY_ADDITIONAL_EXCLUSION_CRITERIA,
     COMPANY_ADDITIONAL_DUPLICATE_HANDLING,
-    COMPANY_ADDITIONAL_SELECTION_CRITERIA
+    COMPANY_ADDITIONAL_SELECTION_CRITERIA,
+    KEYWORD_CATEGORIES
 )
 
 
@@ -31,22 +32,22 @@ class NewsService:
     def __init__(self):
         self.google_news = GoogleNews()
     
-    def collect_news_by_keywords(self, keywords: List[str], max_results: int = 100, 
+    def collect_news_by_keywords(self, keywords: List[str], max_results: int = 200, 
                                 trusted_press: Dict = None) -> List[Dict[str, Any]]:
         """
-        키워드 리스트로 뉴스 수집 (OR 조건으로 한번에 검색)
+        키워드 리스트로 뉴스 수집 (OR 조건으로 한번에 검색 + AI 필터링)
         
         Args:
             keywords: 검색할 키워드 리스트
-            max_results: 전체 키워드에서 최대 결과 수 (기본값: 100)
+            max_results: 전체 키워드에서 최대 결과 수 (기본값: 200)
             trusted_press: 신뢰할 수 있는 언론사 목록 (AI 필터링용)
             
         Returns:
-            수집된 뉴스 리스트
+            필터링된 뉴스 리스트
         """
         # OR 조건으로 모든 키워드를 한번에 검색
         combined_query = " OR ".join(keywords)
-        print(f"OR 조건으로 검색: {combined_query}")
+        print(f"통합 검색 시작: {combined_query}")
         
         # 전체 언론사에서 한번에 검색 (빠름)
         all_news = self.google_news.search_all_press_unified(combined_query, max_results)
@@ -61,6 +62,58 @@ class NewsService:
         else:
             print("신뢰할 수 있는 언론사 목록이 없어 전체 결과 반환")
             return all_news
+
+    def collect_news_by_categories_sequential(self, categories: List[str] = None, 
+                                            max_per_category: int = 50) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        카테고리별로 각 키워드를 개별 검색하여 각각 50개씩 수집 (GPT 분석용)
+        
+        Args:
+            categories: 검색할 카테고리 리스트 (None이면 전체 카테고리)
+            max_per_category: 각 키워드당 최대 뉴스 수 (기본값: 50)
+            
+        Returns:
+            카테고리별 뉴스 리스트를 담은 딕셔너리
+        """
+        
+        if categories is None:
+            categories = list(KEYWORD_CATEGORIES.keys())
+        
+        all_category_news = {}
+        
+        for category in categories:
+            if category not in KEYWORD_CATEGORIES:
+                print(f"알 수 없는 카테고리: {category}")
+                continue
+                
+            keywords = KEYWORD_CATEGORIES[category]
+            print(f"\n=== {category} 카테고리 검색 시작 ===")
+            print(f"키워드: {keywords}")
+            
+            category_news = []
+            
+            # 각 키워드를 개별적으로 검색 (OR 조건 아님)
+            for keyword in keywords:
+                print(f"  - '{keyword}' 키워드 검색 중...")
+                
+                # 개별 키워드로 검색
+                keyword_news = self.google_news.search_all_press_unified(keyword, max_per_category)
+                print(f"    '{keyword}' 검색 결과: {len(keyword_news)}개")
+                
+                # 각 뉴스에 키워드 정보 추가
+                for news in keyword_news:
+                    news_with_keyword = news.copy()
+                    news_with_keyword['search_keyword'] = keyword
+                    category_news.append(news_with_keyword)
+            
+            print(f"{category} 카테고리 수집 완료: {len(category_news)}개 (키워드별 개별 검색)")
+            all_category_news[category] = category_news
+        
+        print(f"\n=== 전체 카테고리 검색 완료 ===")
+        total_news = sum(len(news) for news in all_category_news.values())
+        print(f"총 수집된 뉴스: {total_news}개")
+        
+        return all_category_news
 
     def filter_by_date_range(self, news_data: List[Dict], start_date: datetime, end_date: datetime) -> List[Dict]:
         """
@@ -151,40 +204,6 @@ class NewsService:
         
         return base_criteria + additional_criteria
 
-    def collect_news_unified_with_gpt_filtering(self, keywords: List[str], max_results: int = 200, 
-                                              trusted_press: Dict = None) -> List[Dict[str, Any]]:
-        """
-        전체 언론사에서 한번에 검색하고 GPT로 유효 언론사 필터링
-        
-        Args:
-            keywords: 검색할 키워드 리스트
-            max_results: 전체 키워드에서 최대 결과 수 (기본값: 200)
-            trusted_press: 신뢰할 수 있는 언론사 목록 (GPT 필터링 기준)
-            
-        Returns:
-            필터링된 뉴스 리스트
-        """
-        # OR 조건으로 모든 키워드를 한번에 검색
-        combined_query = " OR ".join(keywords)
-        print(f"통합 검색 시작: {combined_query}")
-        
-        # 전체 언론사에서 한번에 검색 (빠름)
-        all_news = self.google_news.search_all_press_unified(combined_query, max_results)
-        print(f"전체 검색 결과: {len(all_news)}개")
-        
-        if not all_news:
-            return []
-        
-        # GPT로 유효 언론사 필터링
-        if trusted_press:
-            print("GPT로 유효 언론사 필터링 시작...")
-            filtered_news = self._filter_by_gpt_trusted_press(all_news, trusted_press)
-            print(f"GPT 필터링 완료: {len(filtered_news)}개 뉴스 유지")
-            return filtered_news
-        else:
-            print("신뢰할 수 있는 언론사 목록이 없어 전체 결과 반환")
-            return all_news
-
     def _filter_by_gpt_trusted_press(self, news_list: List[Dict], trusted_press: Dict) -> List[Dict]:
         """
         GPT를 사용하여 신뢰할 수 있는 언론사의 뉴스만 필터링
@@ -232,10 +251,10 @@ class NewsAnalysisService:
     def analyze_news(self, keywords: List[str], start_date: datetime, end_date: datetime, 
                     companies: List[str] = None, trusted_press: Dict = None) -> Dict[str, Any]:
         """
-        뉴스 수집부터 AI 분석까지 전체 프로세스 실행
+        뉴스 수집부터 AI 분석까지 전체 프로세스 실행 (카테고리별 순차 검색)
         
         Args:
-            keywords: 검색 키워드
+            keywords: 검색할 키워드 리스트 (사용하지 않음, 카테고리 기반으로 변경)
             start_date: 시작 날짜
             end_date: 종료 날짜
             companies: 회사 목록 (추가 기준 적용용)
@@ -244,44 +263,52 @@ class NewsAnalysisService:
         Returns:
             분석 결과 딕셔너리
         """
-        # 1. 뉴스 수집 (전체 언론사에서 한번에 검색하고 GPT로 필터링)
-        print("=== 뉴스 수집 시작 (통합 검색 + GPT 필터링) ===")
-        collected_news = self.news_service.collect_news_unified_with_gpt_filtering(
-            keywords, 
-            max_results=200,  # 전체에서 200개로 증가
-            trusted_press=trusted_press
+        # 1. 카테고리별로 순차 검색 (각 카테고리당 50개씩)
+        print("=== 카테고리별 순차 검색 시작 ===")
+        category_news = self.news_service.collect_news_by_categories_sequential(
+            max_per_category=50
         )
         
-        # 2. 날짜 필터링
+        # 2. 모든 카테고리의 뉴스를 하나의 리스트로 통합
+        all_collected_news = []
+        for category, news_list in category_news.items():
+            for news in news_list:
+                news_with_category = news.copy()
+                news_with_category['category'] = category
+                all_collected_news.append(news_with_category)
+        
+        print(f"통합된 뉴스 수: {len(all_collected_news)}개")
+        
+        # 3. 날짜 필터링
         print("=== 날짜 필터링 시작 ===")
         date_filtered_news = self.news_service.filter_by_date_range(
-            collected_news, start_date, end_date
+            all_collected_news, start_date, end_date
         )
         
-        # 3. 신뢰할 수 있는 언론사 필터링 (이미 신뢰할 수 있는 언론사에서만 수집했으므로 생략 가능)
+        # 4. 신뢰할 수 있는 언론사 필터링
         print("=== 언론사 필터링 시작 ===")
         if trusted_press:
-            # 이미 신뢰할 수 있는 언론사에서만 수집했으므로 필터링 생략
-            print("신뢰할 수 있는 언론사에서만 수집했으므로 언론사 필터링 생략")
-            press_filtered_news = date_filtered_news
+            press_filtered_news = self.news_service._filter_by_gpt_trusted_press(
+                date_filtered_news, trusted_press
+            )
         else:
-            # 기존 로직: 전체 언론사에서 수집한 경우 필터링 수행
-            press_filtered_news = self.news_service.filter_by_trusted_press(date_filtered_news)
+            press_filtered_news = date_filtered_news
         
-        # 4. AI 분석 (여기서는 기본 필터링만 수행, 실제 AI 분석은 별도 구현 필요)
+        # 5. AI 분석
         print("=== AI 분석 시작 ===")
         analysis_result = self._perform_basic_analysis(press_filtered_news, companies)
         
         return {
-            "collected_count": len(collected_news),
+            "collected_count": len(all_collected_news),
             "date_filtered_count": len(date_filtered_news),
             "press_filtered_count": len(press_filtered_news),
             "final_selection": analysis_result,
             "raw_news": press_filtered_news,
-            "borderline_news": [],  # 보류 뉴스 (빈 리스트로 초기화)
-            "retained_news": [],    # 유지 뉴스 (빈 리스트로 초기화)
-            "grouped_news": [],     # 그룹핑된 뉴스 (빈 리스트로 초기화)
-            "is_reevaluated": False # 재평가 여부
+            "category_news": category_news,  # 카테고리별 뉴스 추가
+            "borderline_news": [],
+            "retained_news": [],
+            "grouped_news": [],
+            "is_reevaluated": False
         }
     
     def _perform_basic_analysis(self, news_data: List[Dict], companies: List[str] = None) -> List[Dict]:

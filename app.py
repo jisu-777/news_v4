@@ -15,8 +15,7 @@ st.set_page_config(
 from datetime import datetime, timedelta, timezone
 import os
 from PIL import Image
-import docx
-from docx.shared import Pt, RGBColor, Inches
+
 import io
 from urllib.parse import urlparse
 from news_service import NewsAnalysisService
@@ -26,8 +25,6 @@ import html  # HTML 엔티티 디코딩을 위해 추가
 # Import centralized configuration
 from config import (
     COMPANY_CATEGORIES,
-    COMPANY_KEYWORD_MAP,
-    COMPANY_GROUP_MAPPING,
     TRUSTED_PRESS_ALIASES,
     ADDITIONAL_PRESS_ALIASES,
     SYSTEM_PROMPT_1,
@@ -39,11 +36,7 @@ from config import (
     GPT_MODELS,
     DEFAULT_GPT_MODEL,
     KEYWORD_CATEGORIES,
-    DEFAULT_NEWS_COUNT,
-    # 새로 추가되는 회사별 기준들
-    COMPANY_ADDITIONAL_EXCLUSION_CRITERIA,
-    COMPANY_ADDITIONAL_DUPLICATE_HANDLING,
-    COMPANY_ADDITIONAL_SELECTION_CRITERIA
+    DEFAULT_NEWS_COUNT
 )
 
 # 한국 시간대(KST) 정의
@@ -97,126 +90,9 @@ def format_date(date_str):
                 # Return original if parsing fails
                 return date_str if date_str else '날짜 정보 없음'
 
-# 회사별 추가 기준을 적용하는 함수들
-def get_enhanced_exclusion_criteria(companies):
-    """회사별 제외 기준을 추가한 프롬프트 반환 (여러 회사 지원)"""
-    base_criteria = EXCLUSION_CRITERIA
-    
-    # companies가 문자열이면 리스트로 변환
-    if isinstance(companies, str):
-        companies = [companies]
-    
-    # 선택된 모든 회사의 추가 기준을 합침
-    all_additional_criteria = ""
-    for company in companies:
-        additional_criteria = COMPANY_ADDITIONAL_EXCLUSION_CRITERIA.get(company, "")
-        if additional_criteria:
-            all_additional_criteria += additional_criteria
-    
-    return base_criteria + all_additional_criteria
-
-def get_enhanced_duplicate_handling(companies):
-    """회사별 중복 처리 기준을 추가한 프롬프트 반환 (여러 회사 지원)"""
-    base_criteria = DUPLICATE_HANDLING
-    
-    # companies가 문자열이면 리스트로 변환
-    if isinstance(companies, str):
-        companies = [companies]
-    
-    # 선택된 모든 회사의 추가 기준을 합침
-    all_additional_criteria = ""
-    for company in companies:
-        additional_criteria = COMPANY_ADDITIONAL_DUPLICATE_HANDLING.get(company, "")
-        if additional_criteria:
-            all_additional_criteria += additional_criteria
-    
-    return base_criteria + all_additional_criteria
-
-def get_enhanced_selection_criteria(companies):
-    """회사별 선택 기준을 추가한 프롬프트 반환 (여러 회사 지원)"""
-    base_criteria = SELECTION_CRITERIA
-    
-    # companies가 문자열이면 리스트로 변환
-    if isinstance(companies, str):
-        companies = [companies]
-    
-    # 선택된 모든 회사의 추가 기준을 합침
-    all_additional_criteria = ""
-    for company in companies:
-        additional_criteria = COMPANY_ADDITIONAL_SELECTION_CRITERIA.get(company, "")
-        if additional_criteria:
-            all_additional_criteria += additional_criteria
-    
-    return base_criteria + all_additional_criteria
+# 회사별 추가 기준 함수들 제거됨 (개별 키워드 50개씩 수집 방식으로 단순화)
             
-# 워드 파일 생성 함수
-def create_word_document(keyword, final_selection, analysis=""):
-    # 새 워드 문서 생성
-    doc = docx.Document()
-    
-    # 제목 스타일 설정
-    title = doc.add_heading(f'PwC 뉴스 분석 보고서: {clean_html_entities(keyword)}', level=0)
-    for run in title.runs:
-        run.font.color.rgb = RGBColor(208, 74, 2)  # PwC 오렌지 색상
-    
-    # 분석 요약 추가
-    if analysis:
-        doc.add_heading('회계법인 관점의 분석 결과', level=1)
-        doc.add_paragraph(clean_html_entities(analysis))
-    
-    # 선별된 주요 뉴스 추가
-    doc.add_heading('선별된 주요 뉴스', level=1)
-    
-    for i, news in enumerate(final_selection):
-        p = doc.add_paragraph()
-        p.add_run(f"{i+1}. {clean_html_entities(news.get('title', ''))}").bold = True
-        
-        # 날짜 정보 추가
-        date_str = news.get('date', '날짜 정보 없음')
-        date_paragraph = doc.add_paragraph()
-        date_paragraph.add_run(f"날짜: {clean_html_entities(date_str)}").italic = True
-        
-        # 선정 사유 추가
-        reason = news.get('reason', '')
-        if reason:
-            doc.add_paragraph(f"선정 사유: {clean_html_entities(reason)}")
-        
-        # 키워드 추가
-        keywords = news.get('keywords', [])
-        if keywords:
-            doc.add_paragraph(f"키워드: {', '.join([clean_html_entities(k) for k in keywords])}")
-        
-        # 관련 계열사 추가
-        affiliates = news.get('affiliates', [])
-        if affiliates:
-            doc.add_paragraph(f"관련 계열사: {', '.join([clean_html_entities(a) for a in affiliates])}")
-        
-        # 언론사 추가
-        press = news.get('press', '알 수 없음')
-        doc.add_paragraph(f"언론사: {clean_html_entities(press)}")
-        
-        # URL 추가
-        url = news.get('url', '')
-        if url:
-            doc.add_paragraph(f"출처: {clean_html_entities(url)}")
-        
-        # 구분선 추가
-        if i < len(final_selection) - 1:
-            doc.add_paragraph("").add_run().add_break()
-    
-    # 날짜 및 푸터 추가
-    current_date = datetime.now().strftime("%Y년 %m월 %d일")
-    doc.add_paragraph(f"\n보고서 생성일: {current_date}")
-    doc.add_paragraph("© 2024 PwC 뉴스 분석기 | 회계법인 관점의 뉴스 분석 도구")
-    
-    return doc
-
-# BytesIO 객체로 워드 문서 저장
-def get_binary_file_downloader_html(doc, file_name):
-    bio = io.BytesIO()
-    doc.save(bio)
-    bio.seek(0)
-    return bio
+# 워드 파일 생성 함수들 제거됨 (현재 사용하지 않음)
 
 # 커스텀 CSS
 st.markdown("""
@@ -496,15 +372,8 @@ st.sidebar.markdown("### 📋 선택요약")
 st.sidebar.info(f"**날짜범위:** {start_date} ~ {end_date}")
 st.sidebar.info(f"**선택된 카테고리:** {len(selected_categories)}개")
 
-# 검색용 키워드 리스트 (선택된 키워드 + 연관 검색어)
-search_keywords = []
-for keyword in selected_keywords:
-    # 키워드 자체와 연관 검색어 모두 추가
-    related_keywords = COMPANY_KEYWORD_MAP.get(keyword, [keyword])
-    search_keywords.extend(related_keywords)
-
-# 중복 제거
-search_keywords = list(set(search_keywords))
+# 검색용 키워드 리스트 (간소화 - 직접 사용)
+search_keywords = selected_keywords.copy()
 
 # 구분선 추가
 st.sidebar.markdown("---")
@@ -630,12 +499,6 @@ if st.button("뉴스 분석 시작", type="primary"):
     # 키워드별 분석 실행
     for i, keyword in enumerate(selected_keywords, 1):
         with st.spinner(f"'{keyword}' 관련 뉴스를 수집하고 분석 중입니다..."):
-            # 해당 키워드의 연관 검색어 확장
-            related_keywords = COMPANY_KEYWORD_MAP.get(keyword, [keyword])
-            
-            # 연관 검색어 표시 (UI에서 숨김)
-            # st.write(f"'{keyword}' 연관 검색어로 검색 중: {', '.join(related_keywords)}")
-            
             # 날짜/시간 객체 생성
             start_dt = datetime.combine(start_date, start_time)
             end_dt = datetime.combine(end_date, end_time)
@@ -643,7 +506,7 @@ if st.button("뉴스 분석 시작", type="primary"):
             # 뉴스 분석 서비스 호출
             try:
                 analysis_result = news_service.analyze_news(
-                    keywords=related_keywords,
+                    keywords=[keyword],
                     start_date=start_dt,
                     end_date=end_dt,
                     companies=[keyword],
@@ -854,49 +717,7 @@ if st.button("뉴스 분석 시작", type="primary"):
     # 이메일 미리보기 표시
     st.markdown(f"<div class='email-preview'>{html_email_content}</div>", unsafe_allow_html=True)
 
-    # 워드 문서 다운로드 섹션 추가
-    st.markdown("<div class='subtitle'>📄 워드 문서 다운로드</div>", unsafe_allow_html=True)
-    
-    # 워드 문서 생성
-    if all_results:
-        try:
-            # 모든 키워드의 최종 선별 뉴스를 하나의 워드 문서로 생성
-            all_final_news = []
-            for keyword, result in all_results.items():
-                if 'final_selection' in result:
-                    for news in result['final_selection']:
-                        # news 객체 유효성 검사
-                        if not news or not isinstance(news, dict):
-                            print(f"워드 문서 생성 중 유효하지 않은 뉴스 객체: {news}")
-                            continue
-                        
-                        news_with_keyword = news.copy()
-                        news_with_keyword['keyword'] = keyword
-                        all_final_news.append(news_with_keyword)
-            
-            if all_final_news:
-                # 워드 문서 생성
-                doc = create_word_document("종합 뉴스 분석", all_final_news)
-                
-                # 현재 날짜로 파일명 생성
-                current_date = datetime.now().strftime("%Y%m%d")
-                filename = f"PwC_뉴스분석_{current_date}.docx"
-                
-                # 워드 문서 다운로드 버튼
-                bio = get_binary_file_downloader_html(doc, filename)
-                st.download_button(
-                    label="📥 워드 문서 다운로드 (.docx)",
-                    data=bio.getvalue(),
-                    file_name=filename,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                )
-                
-                st.success("워드 문서가 생성되었습니다. 위 버튼을 클릭하여 다운로드하세요.")
-            else:
-                st.warning("다운로드할 뉴스가 없습니다.")
-                
-        except Exception as e:
-            st.error(f"워드 문서 생성 중 오류가 발생했습니다: {str(e)}")
+    # 워드 문서 다운로드 섹션 제거됨 (현재 사용하지 않음)
     
     # CSV 다운로드 섹션 (인코딩 문제 해결)
     st.markdown("<div class='subtitle'>📊 CSV 다운로드 (인코딩 문제 해결)</div>", unsafe_allow_html=True)

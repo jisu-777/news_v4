@@ -299,7 +299,10 @@ GPT_MODELS = {
 }
 
 # Default GPT model to use
-DEFAULT_GPT_MODEL = "gpt-4.1" 
+DEFAULT_GPT_MODEL = "gpt-4.1"
+
+# 기본 뉴스 수집 개수
+DEFAULT_NEWS_COUNT = 200 
 
 # Email settings
 EMAIL_SETTINGS = {

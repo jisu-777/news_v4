@@ -39,6 +39,7 @@ from config import (
     GPT_MODELS,
     DEFAULT_GPT_MODEL,
     KEYWORD_CATEGORIES,
+    DEFAULT_NEWS_COUNT,
     # 새로 추가되는 회사별 기준들
     COMPANY_ADDITIONAL_EXCLUSION_CRITERIA,
     COMPANY_ADDITIONAL_DUPLICATE_HANDLING,
@@ -547,42 +548,26 @@ st.sidebar.markdown("---")
 # 키워드 선택 UI
 st.sidebar.markdown("### 🔍 분석할 키워드 선택")
 
-# 키워드 카테고리 선택
-selected_category = st.sidebar.radio(
-    "키워드 카테고리를 선택하세요",
+# 키워드 카테고리 복수 선택
+selected_categories = st.sidebar.multiselect(
+    "키워드 카테고리를 선택하세요 (복수 선택 가능)",
     options=list(KEYWORD_CATEGORIES.keys()),
-    index=0,  # 삼일PwC_핵심을 기본값으로 설정
-    help="분석할 키워드 카테고리를 선택하세요. 삼일PwC_핵심 또는 회계업계_일반 중에서 선택할 수 있습니다."
+    help="분석할 키워드 카테고리를 하나 이상 선택하세요. 클릭만으로도 여러 개 선택할 수 있습니다."
 )
 
-# 선택된 카테고리에 따라 키워드 목록 가져오기
-SELECTED_KEYWORDS = KEYWORD_CATEGORIES[selected_category]
-
-# 카테고리 내 키워드들 표시
-st.sidebar.markdown("**해당 카테고리의 키워드들:**")
-for keyword in SELECTED_KEYWORDS:
-    st.sidebar.info(f"🔑 {keyword}")
+# 선택된 카테고리들의 모든 키워드 수집
+SELECTED_KEYWORDS = []
+for category in selected_categories:
+    SELECTED_KEYWORDS.extend(KEYWORD_CATEGORIES[category])
 
 # 선택된 키워드들
 selected_keywords = SELECTED_KEYWORDS.copy()
 
-# 선택된 키워드 정보 표시
+# 선택된 키워드 정보 표시 (간단하게)
 st.sidebar.markdown("---")
 st.sidebar.markdown("### ℹ️ 선택된 키워드 정보")
-st.sidebar.info(f"**선택된 키워드:** {len(selected_keywords)}개")
-
-# 키워드별 연관 검색어 정보
-st.sidebar.markdown("### 🔍 키워드별 연관 검색어")
-
-# 세션 상태에 COMPANY_KEYWORD_MAP 저장 (초기화)
-if 'company_keyword_map' not in st.session_state:
-    st.session_state.company_keyword_map = COMPANY_KEYWORD_MAP.copy()
-
-# 선택된 키워드들의 연관 검색어 표시
-if selected_keywords:
-    for keyword in selected_keywords:
-        related_keywords = st.session_state.company_keyword_map.get(keyword, [keyword])
-        st.sidebar.info(f"**{keyword}**: {', '.join(related_keywords[:5])}...")
+st.sidebar.info(f"**선택된 카테고리:** {len(selected_categories)}개")
+st.sidebar.info(f"**총 키워드 수:** {len(selected_keywords)}개")
 
 # 미리보기 버튼
 with st.sidebar.expander("🔍 검색 키워드 미리보기"):

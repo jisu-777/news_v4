@@ -11,7 +11,7 @@ click==8.1.8
 colorama==0.4.6
 distro==1.9.0
 dotenv==0.9.9
-# feedparser==6.0.10  # Python 3.13 호환성 문제로 주석 처리
+feedparser==6.0.10
 gitdb==4.0.12
 GitPython==3.1.44
 h11==0.14.0

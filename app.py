@@ -539,7 +539,7 @@ def display_results(all_results, selected_categories):
                 for news in selected_news:
                     # 원본 뉴스에서 언론사 정보 확인
                     original_press = ""
-                    for original_news in news_list:
+                    for original_news in result['collected_news']:
                         if (news.get('title', '') in original_news.get('title', '') or 
                             original_news.get('title', '') in news.get('title', '')):
                             original_press = original_news.get('extracted_press', '')

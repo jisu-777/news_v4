@@ -507,8 +507,8 @@ with col2:
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 기업 선택 섹션 제목
-st.sidebar.markdown("### 🏢 분석할 기업 선택")
+# 카테고리 선택만 표시
+st.sidebar.markdown("### 🏢 분석할 카테고리 선택")
 
 # 기업 카테고리 선택
 selected_category = st.sidebar.radio(
@@ -521,92 +521,28 @@ selected_category = st.sidebar.radio(
 # 선택된 카테고리에 따라 그룹 목록 가져오기
 GROUPS = COMPANY_CATEGORIES[selected_category]
 
-# 그룹별로 기업 선택
-selected_companies = []
-st.sidebar.markdown("**그룹별로 분석할 기업을 선택하세요:**")
-
+# 카테고리 내 그룹들 표시 (선택 불가, 정보만)
+st.sidebar.markdown("**해당 카테고리의 그룹들:**")
 for group in GROUPS:
     if group in COMPANY_GROUP_MAPPING:
         companies_in_group = COMPANY_GROUP_MAPPING[group]
-        
-        # 그룹별로 expander 생성
-        with st.sidebar.expander(f"📁 {group} ({len(companies_in_group)}개 기업)", expanded=True):
-            st.markdown(f"**{group} 그룹 기업들:**")
-            
-            # 그룹 내 기업들을 체크박스로 선택
-            selected_in_group = st.multiselect(
-                f"{group} 그룹에서 선택",
-                options=companies_in_group,
-                default=companies_in_group[:3] if len(companies_in_group) > 3 else companies_in_group,  # 최대 3개 기본 선택
-                max_selections=min(5, len(companies_in_group)),  # 그룹당 최대 5개
-                help=f"{group} 그룹에서 분석할 기업을 선택하세요. 최대 {min(5, len(companies_in_group))}개까지 선택 가능합니다.",
-                key=f"group_{group}"
-            )
-            
-            # 선택된 기업들을 전체 목록에 추가
-            selected_companies.extend(selected_in_group)
-            
-            # 선택된 기업 수 표시
-            if selected_in_group:
-                st.success(f"✅ {group}: {len(selected_in_group)}개 기업 선택됨")
-            else:
-                st.info(f"ℹ️ {group}: 선택된 기업 없음")
+        st.sidebar.info(f"📁 {group}: {len(companies_in_group)}개 기업")
 
-# 전체 선택된 기업 수 표시
-if selected_companies:
-    st.sidebar.success(f"🎯 **총 {len(selected_companies)}개 기업 선택됨**")
-    st.sidebar.markdown("**선택된 기업들:**")
-    for company in selected_companies:
-        st.sidebar.markdown(f"• {company}")
-else:
-    st.sidebar.warning("⚠️ 분석할 기업을 선택해주세요!")
+# 기본 기업들 자동 선택 (사용자 선택 불가)
+selected_companies = []
+for group in GROUPS:
+    if group in COMPANY_GROUP_MAPPING:
+        companies_in_group = COMPANY_GROUP_MAPPING[group]
+        # 각 그룹에서 상위 3개 기업 자동 선택
+        selected_companies.extend(companies_in_group[:3] if len(companies_in_group) > 3 else companies_in_group)
 
-# 새로운 기업 추가 섹션 (그룹 선택 포함)
+# 새로운 기업 추가 섹션 (간소화)
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ➕ 새로운 기업 추가")
+st.sidebar.markdown("### ℹ️ 선택된 기업 정보")
+st.sidebar.info(f"**자동 선택된 기업:** {len(selected_companies)}개")
 
-new_company_group = st.sidebar.selectbox(
-    "새 기업을 추가할 그룹 선택",
-    options=GROUPS,
-    help="새로운 기업을 추가할 그룹을 선택하세요."
-)
-
-new_company = st.sidebar.text_input(
-    "새로운 기업명",
-    value="",
-    help="분석하고 싶은 기업명을 입력하고 Enter를 누르세요. (예: 네이버, 카카오, 현대중공업 등)"
-)
-
-# 새로운 기업 추가 로직 수정
-if new_company and new_company not in selected_companies:
-    # 선택된 그룹에 기업 추가
-    if new_company_group in COMPANY_GROUP_MAPPING:
-        COMPANY_GROUP_MAPPING[new_company_group].append(new_company)
-        
-        # 세션 상태도 업데이트
-        if 'company_group_mapping' not in st.session_state:
-            st.session_state.company_group_mapping = COMPANY_GROUP_MAPPING.copy()
-        else:
-            st.session_state.company_group_mapping[new_company_group].append(new_company)
-        
-        # 새 기업에 대한 기본 연관 키워드 설정 (기업명 자체만 포함)
-        COMPANY_KEYWORD_MAP[new_company] = [new_company]
-        
-        # 세션 상태도 함께 업데이트
-        if 'company_keyword_map' not in st.session_state:
-            st.session_state.company_keyword_map = COMPANY_KEYWORD_MAP.copy()
-        else:
-            st.session_state.company_keyword_map[new_company] = [new_company]
-        
-        st.sidebar.success(f"✅ '{new_company}'이(가) '{new_company_group}' 그룹에 추가되었습니다!")
-        
-        # 페이지 새로고침을 위한 버튼
-        if st.sidebar.button("🔄 페이지 새로고침", key="refresh_page"):
-            st.rerun()
-
-# 연관 키워드 관리 섹션
-st.sidebar.markdown("### 🔍 연관 키워드 관리")
-st.sidebar.markdown("각 기업의 연관 키워드를 확인하고 편집할 수 있습니다.")
+# 연관 키워드 관리 섹션 (간소화)
+st.sidebar.markdown("### 🔍 연관 키워드 정보")
 
 # 세션 상태에 COMPANY_KEYWORD_MAP 및 COMPANY_GROUP_MAPPING 저장 (초기화)
 if 'company_keyword_map' not in st.session_state:
@@ -615,60 +551,16 @@ if 'company_keyword_map' not in st.session_state:
 if 'company_group_mapping' not in st.session_state:
     st.session_state.company_group_mapping = COMPANY_GROUP_MAPPING.copy()
 
-# 연관 키워드 UI 개선 (선택된 기업이 있을 때만 표시)
+# 간단한 키워드 정보만 표시
 if selected_companies:
-    # 선택된 기업 중에서 관리할 기업 선택
-    company_to_edit = st.sidebar.selectbox(
-        "연관 키워드를 관리할 기업 선택",
-        options=selected_companies,
-        help="키워드를 확인하거나 추가할 기업을 선택하세요."
-    )
-    
-    if company_to_edit:
-        # 현재 연관 키워드 표시 (세션 상태에서 가져옴)
-        current_keywords = st.session_state.company_keyword_map.get(company_to_edit, [company_to_edit])
-        st.sidebar.markdown(f"**현재 '{company_to_edit}'의 연관 키워드:**")
-        keyword_list = ", ".join(current_keywords)
-        st.sidebar.code(keyword_list)
-        
-        # 연관 키워드 편집
-        new_keywords = st.sidebar.text_area(
-            "연관 키워드 편집",
-            value=keyword_list,
-            help="쉼표(,)로 구분하여 키워드를 추가/편집하세요.",
-            key=f"edit_{company_to_edit}"  # 고유 키 추가
-        )
-        
-        # 키워드 업데이트 함수
-        def update_keywords():
-            # 쉼표로 구분된 텍스트를 리스트로 변환
-            updated_keywords = [kw.strip() for kw in new_keywords.split(",") if kw.strip()]
-            
-            # 업데이트
-            if updated_keywords:
-                st.session_state.company_keyword_map[company_to_edit] = updated_keywords
-                st.sidebar.success(f"'{company_to_edit}'의 연관 키워드가 업데이트되었습니다!")
-            else:
-                # 비어있으면 기업명 자체만 포함
-                st.session_state.company_keyword_map[company_to_edit] = [company_to_edit]
-                st.sidebar.warning(f"연관 키워드가 비어있어 기업명만 포함됩니다.")
-        
-        # 변경 사항 적용 버튼
-        if st.sidebar.button("연관 키워드 업데이트", key=f"update_{company_to_edit}", on_click=update_keywords):
-            pass  # 실제 업데이트는 on_click에서 처리되므로 여기서는 아무것도 하지 않음
+    st.sidebar.info(f"**총 {len(selected_companies)}개 기업의 키워드가 자동 설정되었습니다.**")
 
-# 미리보기 버튼 - 모든 검색어 확인
-with st.sidebar.expander("🔍 전체 검색 키워드 미리보기"):
+# 미리보기 버튼 - 간소화
+with st.sidebar.expander("🔍 검색 키워드 미리보기"):
     if selected_companies:
-        for i, company in enumerate(selected_companies, 1):
-            # 세션 상태에서 키워드 가져오기
-            company_keywords = st.session_state.company_keyword_map.get(company, [company])
-            st.markdown(f"**{i}. {company}**")
-            # 연관 키워드 표시
-            for j, kw in enumerate(company_keywords, 1):
-                st.write(f"  {j}) {kw}")
+        st.info(f"**{len(selected_companies)}개 기업이 자동으로 선택되어 키워드가 설정되었습니다.**")
     else:
-        st.info("먼저 분석할 기업을 선택해주세요.")
+        st.info("기업이 선택되지 않았습니다.")
 
 # 선택된 키워드들을 통합 (검색용)
 keywords = []
@@ -683,154 +575,21 @@ keywords = list(set(keywords))
 # 구분선 추가
 st.sidebar.markdown("---")
 
-# 회사별 특화 기준 관리 섹션
-st.sidebar.markdown("### 🎯 회사별 특화 기준 관리")
-st.sidebar.markdown("각 기업의 AI 분석 특화 기준을 확인하고 편집할 수 있습니다.")
+# 회사별 특화 기준 관리 섹션 (간소화)
+st.sidebar.markdown("### 🎯 특화 기준 정보")
 
-# 회사별 특화 기준 관리 UI (선택된 기업이 있을 때만 표시)
+# 간단한 정보만 표시
 if selected_companies:
-    # 선택된 기업 중에서 관리할 기업 선택
-    company_to_manage = st.sidebar.selectbox(
-        "특화 기준을 관리할 기업 선택",
-        options=selected_companies,
-        help="AI 분석 특화 기준을 확인하거나 편집할 기업을 선택하세요.",
-        key="company_to_manage"
-    )
-    
-    if company_to_manage:
-        # 탭 형태로 1~3단계 기준을 구분
-        criteria_tabs = st.sidebar.radio(
-            f"'{company_to_manage}' 특화 기준 선택",
-            ["1단계: 제외 기준", "2단계: 그룹핑 기준", "3단계: 선택 기준"],
-            key=f"criteria_tabs_{company_to_manage}"
-        )
-        
-        # 세션 상태에서 회사별 특화 기준 관리 (초기화)
-        if 'company_additional_exclusion_criteria' not in st.session_state:
-            st.session_state.company_additional_exclusion_criteria = COMPANY_ADDITIONAL_EXCLUSION_CRITERIA.copy()
-        if 'company_additional_duplicate_handling' not in st.session_state:
-            st.session_state.company_additional_duplicate_handling = COMPANY_ADDITIONAL_DUPLICATE_HANDLING.copy()
-        if 'company_additional_selection_criteria' not in st.session_state:
-            st.session_state.company_additional_selection_criteria = COMPANY_ADDITIONAL_SELECTION_CRITERIA.copy()
-        
-        if criteria_tabs == "1단계: 제외 기준":
-            current_criteria = st.session_state.company_additional_exclusion_criteria.get(company_to_manage, "")
-            st.sidebar.markdown(f"**현재 '{company_to_manage}'의 제외 특화 기준:**")
-            if current_criteria.strip():
-                st.sidebar.code(current_criteria, language="text")
-            else:
-                st.sidebar.info("설정된 특화 기준이 없습니다.")
-            
-            # 편집 영역
-            new_exclusion_criteria = st.sidebar.text_area(
-                "제외 특화 기준 편집",
-                value=current_criteria,
-                help="이 회사에만 적용될 추가 제외 기준을 입력하세요.",
-                key=f"edit_exclusion_{company_to_manage}",
-                height=150
-            )
-            
-            # 업데이트 함수
-            def update_exclusion_criteria():
-                st.session_state.company_additional_exclusion_criteria[company_to_manage] = new_exclusion_criteria
-                st.sidebar.success(f"'{company_to_manage}'의 제외 특화 기준이 업데이트되었습니다!")
-            
-            # 업데이트 버튼
-            if st.sidebar.button("제외 기준 업데이트", key=f"update_exclusion_{company_to_manage}", on_click=update_exclusion_criteria):
-                pass
-                
-        elif criteria_tabs == "2단계: 그룹핑 기준":
-            current_criteria = st.session_state.company_additional_duplicate_handling.get(company_to_manage, "")
-            st.sidebar.markdown(f"**현재 '{company_to_manage}'의 그룹핑 특화 기준:**")
-            if current_criteria.strip():
-                st.sidebar.code(current_criteria, language="text")
-            else:
-                st.sidebar.info("설정된 특화 기준이 없습니다.")
-            
-            # 편집 영역
-            new_duplicate_criteria = st.sidebar.text_area(
-                "그룹핑 특화 기준 편집",
-                value=current_criteria,
-                help="이 회사에만 적용될 추가 그룹핑 기준을 입력하세요.",
-                key=f"edit_duplicate_{company_to_manage}",
-                height=150
-            )
-            
-            # 업데이트 함수
-            def update_duplicate_criteria():
-                st.session_state.company_additional_duplicate_handling[company_to_manage] = new_duplicate_criteria
-                st.sidebar.success(f"'{company_to_manage}'의 그룹핑 특화 기준이 업데이트되었습니다!")
-            
-            # 업데이트 버튼
-            if st.sidebar.button("그룹핑 기준 업데이트", key=f"update_duplicate_{company_to_manage}", on_click=update_duplicate_criteria):
-                pass
-                
-        elif criteria_tabs == "3단계: 선택 기준":
-            current_criteria = st.session_state.company_additional_selection_criteria.get(company_to_manage, "")
-            st.sidebar.markdown(f"**현재 '{company_to_manage}'의 선택 특화 기준:**")
-            if current_criteria.strip():
-                st.sidebar.code(current_criteria, language="text")
-            else:
-                st.sidebar.info("설정된 특화 기준이 없습니다.")
-            
-            # 편집 영역
-            new_selection_criteria = st.sidebar.text_area(
-                "선택 특화 기준 편집",
-                value=current_criteria,
-                help="이 회사에만 적용될 추가 선택 기준을 입력하세요.",
-                key=f"edit_selection_{company_to_manage}",
-                height=150
-            )
-            
-            # 업데이트 함수
-            def update_selection_criteria():
-                st.session_state.company_additional_selection_criteria[company_to_manage] = new_selection_criteria
-                st.sidebar.success(f"'{company_to_manage}'의 선택 특화 기준이 업데이트되었습니다!")
-            
-            # 업데이트 버튼
-            if st.sidebar.button("선택 기준 업데이트", key=f"update_selection_{company_to_manage}", on_click=update_selection_criteria):
-                pass
+    st.sidebar.info(f"**{len(selected_companies)}개 기업에 대한 특화 기준이 자동으로 설정되었습니다.**")
 else:
-    st.sidebar.info("먼저 분석할 기업을 선택해주세요.")
+    st.sidebar.info("기업이 선택되지 않았습니다.")
 
-# 미리보기 버튼 - 모든 회사별 특화 기준 확인
-with st.sidebar.expander("🔍 전체 회사별 특화 기준 미리보기"):
+# 미리보기 버튼 - 모든 회사별 특화 기준 확인 (간소화)
+with st.sidebar.expander("🔍 특화 기준 미리보기"):
     if selected_companies:
-        # 세션 상태가 초기화되지 않은 경우를 위한 안전장치
-        if 'company_additional_exclusion_criteria' not in st.session_state:
-            st.session_state.company_additional_exclusion_criteria = COMPANY_ADDITIONAL_EXCLUSION_CRITERIA.copy()
-        if 'company_additional_duplicate_handling' not in st.session_state:
-            st.session_state.company_additional_duplicate_handling = COMPANY_ADDITIONAL_DUPLICATE_HANDLING.copy()
-        if 'company_additional_selection_criteria' not in st.session_state:
-            st.session_state.company_additional_selection_criteria = COMPANY_ADDITIONAL_SELECTION_CRITERIA.copy()
-            
-        for i, company in enumerate(selected_companies, 1):
-            st.markdown(f"**{i}. {company}**")
-            
-            # 1단계 제외 기준 (세션 상태에서 가져오기)
-            exclusion_criteria_text = st.session_state.company_additional_exclusion_criteria.get(company, "")
-            if exclusion_criteria_text.strip():
-                st.markdown("📝 **제외 특화 기준:**")
-                st.text(exclusion_criteria_text[:100] + "..." if len(exclusion_criteria_text) > 100 else exclusion_criteria_text)
-            
-            # 2단계 그룹핑 기준 (세션 상태에서 가져오기)
-            duplicate_criteria_text = st.session_state.company_additional_duplicate_handling.get(company, "")
-            if duplicate_criteria_text.strip():
-                st.markdown("🔄 **그룹핑 특화 기준:**")
-                st.text(duplicate_criteria_text[:100] + "..." if len(duplicate_criteria_text) > 100 else duplicate_criteria_text)
-            
-            # 3단계 선택 기준 (세션 상태에서 가져오기)
-            selection_criteria_text = st.session_state.company_additional_selection_criteria.get(company, "")
-            if selection_criteria_text.strip():
-                st.markdown("✅ **선택 특화 기준:**")
-                st.text(selection_criteria_text[:100] + "..." if len(selection_criteria_text) > 100 else selection_criteria_text)
-            
-            if not (exclusion_criteria_text.strip() or duplicate_criteria_text.strip() or selection_criteria_text.strip()):
-                st.info("설정된 특화 기준이 없습니다.")
-            
-            st.markdown("---")
+        st.info(f"**{len(selected_companies)}개 기업의 특화 기준이 자동으로 설정되었습니다.**")
     else:
-        st.info("먼저 분석할 기업을 선택해주세요.")
+        st.info("기업이 선택되지 않았습니다.")
 
 # 구분선 추가
 st.sidebar.markdown("---")

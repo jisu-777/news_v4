@@ -233,55 +233,6 @@ TEAMS_SETTINGS = {
     "use_plain_text": True  # False면 HTML 사용, True면 텍스트 사용
 }
 
-# Teams 채널별 설정 (카테고리별)
-TEAMS_CHANNEL_SETTINGS = {
-    "Anchor": {
-        "groupId": "",  # Anchor 팀 그룹 ID
-        "channels": {
-            "삼일 및 PwC 관련": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "회계": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "세제·정책": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "주요 기업": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "산업 동향": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "금융": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "M&A 및 자본시장": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "경제": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "인사 동정": {
-                "channelId": "",
-                "parentMessageId": ""
-            },
-            "경쟁사": {
-                "channelId": "",
-                "parentMessageId": ""
-            }
-        }
-    }
-}
-
 # SharePoint List 설정 (카테고리별 -> 회사별)
 SHAREPOINT_LIST_SETTINGS = {
     "Anchor": {

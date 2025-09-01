@@ -1,6 +1,11 @@
 import streamlit as st
 import re
 from typing import Dict, List
+import feedparser
+import requests
+from bs4 import BeautifulSoup
+import json
+import openai
 
 
 # ✅ 무조건 첫 Streamlit 명령어
@@ -18,7 +23,7 @@ from PIL import Image
 
 import io
 from urllib.parse import urlparse
-from news_service import NewsAnalysisService
+
 import pandas as pd  # 엑셀 생성을 위해 pandas 추가
 import html  # HTML 엔티티 디코딩을 위해 추가
 
@@ -441,9 +446,6 @@ analysis_prompt = f"""
 
 # 메인 컨텐츠
 if st.button("뉴스 분석 시작", type="primary"):
-    # 뉴스 분석 서비스 초기화
-    news_service = NewsAnalysisService()
-    
     # 유효 언론사 설정을 딕셔너리로 파싱
     valid_press_config = TRUSTED_PRESS_ALIASES
     
@@ -463,9 +465,16 @@ if st.button("뉴스 분석 시작", type="primary"):
     [제외 대상]
     {exclusion_criteria}
     
+    [언론사 중요도 판단 기준]
+    - 일반지: 조선일보, 중앙일보, 동아일보, 한국일보, 경향신문, 한겨레, 서울신문 (높은 신뢰도)
+    - 경제지: 매일경제, 한국경제, 이데일리, 머니투데이, 파이낸셜뉴스, 아시아경제 (경제 뉴스 전문성)
+    - 통신사: 뉴스1, 연합뉴스, 뉴시스 (신속성과 객관성)
+    - 스포츠지: 스포츠조선, 스포츠동아, 스포츠한국, 스포츠경향 (스포츠 관련 뉴스는 제외 기준에 따라 AI가 판단)
+    
     [응답 요구사항]
     1. 선택 기준에 부합하는 뉴스가 많다면 최대 3개까지 선택 가능합니다.
     2. 선택 기준에 부합하는 뉴스가 없다면, 그 이유를 명확히 설명해주세요.
+    3. 언론사의 신뢰도와 전문성을 고려하여 선별하세요.
     
     [응답 형식]
     다음과 같은 JSON 형식으로 응답해주세요:
@@ -477,7 +486,7 @@ if st.button("뉴스 분석 시작", type="primary"):
                 "title": "뉴스 제목",
                 "press": "언론사명",
                 "date": "발행일자",
-                "reason": "선정 사유",
+                "reason": "선정 사유 (언론사 신뢰도 포함)",
                 "keywords": ["키워드1", "키워드2"]
             }},
             ...
@@ -486,14 +495,11 @@ if st.button("뉴스 분석 시작", type="primary"):
             {{
                 "index": 2,
                 "title": "뉴스 제목",
-                "reason": "제외 사유"
+                "reason": "제외 사유 (언론사 품질 포함)"
             }},
             ...
         ]
     }}
-    
-    [유효 언론사]
-    {TRUSTED_PRESS_ALIASES}
     
     [중복 처리 기준]
     {duplicate_handling}
@@ -502,72 +508,64 @@ if st.button("뉴스 분석 시작", type="primary"):
     
     # 키워드별 분석 실행
     for i, keyword in enumerate(selected_keywords, 1):
-        with st.spinner(f"'{keyword}' 관련 뉴스를 수집하고 분석 중입니다..."):
+        with st.spinner(f"뉴스를 수집하고 분석 중입니다..."):
             # 날짜/시간 객체 생성
             start_dt = datetime.combine(start_date, start_time)
             end_dt = datetime.combine(end_date, end_time)
             
-            # 뉴스 분석 서비스 호출
+            # 직접 구현한 뉴스 분석 함수 호출
             try:
-                analysis_result = news_service.analyze_news(
-                    keywords=[keyword],
+                analysis_result = analyze_news_direct(
+                    keyword=keyword,
                     start_date=start_dt,
                     end_date=end_dt,
-                    companies=[keyword],
                     trusted_press=valid_press_config
                 )
                 
                 # 결과 저장
                 all_results[keyword] = analysis_result
                 
-                # 결과 표시 (UI에서 숨김)
-                st.success(f"'{keyword}' 분석 완료!")
-                # st.write(f"수집된 뉴스: {analysis_result['collected_count']}개")
-                # st.write(f"날짜 필터링 후: {analysis_result['date_filtered_count']}개")
-                # st.write(f"언론사 필터링 후: {analysis_result['press_filtered_count']}개")
-                # st.write(f"최종 선별: {len(analysis_result['final_selection'])}개")
-                
-                # 최종 선별된 뉴스 표시
-                if analysis_result['final_selection']:
-                    st.subheader(f"📰 {keyword} 최종 선별 뉴스")
-                    for j, news in enumerate(analysis_result['final_selection'], 1):
-                        with st.expander(f"{j}. {news.get('content', '제목 없음')}"):
-                            st.write(f"**언론사:** {news.get('press', '알 수 없음')}")
-                            st.write(f"**날짜:** {news.get('date', '날짜 정보 없음')}")
-                            st.write(f"**URL:** {news.get('url', '')}")
+                # 결과 표시 (UI에서 숨김) - 키워드별 개별 표시 제거
+                # st.success(f"'{keyword}' 분석 완료!")  # 키워드별 개별 표시 제거
                 
             except Exception as e:
                 st.error(f"'{keyword}' 분석 중 오류 발생: {str(e)}")
                 continue
             
-            # 분석 완료 후 결과 요약
-            st.success(f"✅ {keyword} 분석 완료!")
+            # 분석 완료 후 결과 요약 (UI에서 숨김) - 중복 제거
             
-            # 이메일 내용에 추가
-            email_content += f"\n=== {keyword} 분석 결과 ===\n"
-            email_content += f"수집된 뉴스: {analysis_result['collected_count']}개\n"
-
-     
+            # 이메일 내용에 추가 (카테고리 기반으로 구성)
+            # email_content += f"\n=== {keyword} 분석 결과 ===\n"  # 키워드별 개별 표시 제거
+            # email_content += f"수집된 뉴스: {analysis_result['collected_count']}개\n"
+            # email_content += f"날짜 필터링 후: {analysis_result['date_filtered_count']}개\n"
+            # email_content += f"언론사 필터링 후: {analysis_result['press_filtered_count']}개\n"
+            # email_content += f"최종 선별: {len(analysis_result['final_selection'])}개\n\n"
+            
+            # 디버깅 정보는 UI에서 숨김 (보류 뉴스, 유지 뉴스, 그룹핑 결과 등)
+            
+            st.markdown("---")
+            
           
-            
-        
-            
             # 5단계: 최종 선택 결과 표시
             st.markdown("<div class='subtitle'>🔍 최종 선택 결과</div>", unsafe_allow_html=True)
             
-            # 재평가 여부 확인
-            was_reevaluated = analysis_result.get("is_reevaluated", False)
+            # 재평가 여부 확인 (UI에서 숨김)
+            # was_reevaluated = analysis_result.get("is_reevaluated", False)
             
-            if was_reevaluated:
-                st.warning("5단계에서 선정된 뉴스가 없어 6단계 재평가를 진행했습니다.")
-                st.markdown("<div class='subtitle'>🔍 6단계: 재평가 결과</div>", unsafe_allow_html=True)
-                st.markdown("### 📰 재평가 후 선정된 뉴스")
-                news_style = "border-left: 4px solid #FFA500; background-color: #FFF8DC;"
-                reason_prefix = "<span style=\"color: #FFA500; font-weight: bold;\">재평가 후</span> 선별 이유: "
-            else:
-                st.markdown("### 📰 최종 선정된 뉴스")  
-                news_style = ""
-                reason_prefix = "선별 이유: "
+            # if was_reevaluated:
+            #     st.warning("5단계에서 선정된 뉴스가 없어 6단계 재평가를 진행했습니다.")
+            #     st.markdown("<div class='subtitle'>🔍 6단계: 재평가 결과</div>", unsafe_allow_html=True)
+            #     st.markdown("### 📰 재평가 후 선정된 뉴스")
+            #     news_style = "border-left: 4px solid #FFA500; background-color: #FFF8DC;"
+            #     reason_prefix = "<span style=\"color: #FFA500; font-weight: bold;\">재평가 후</span> 선별 이유: "
+            # else:
+            #     st.markdown("### 📰 최종 선정된 뉴스")  
+            #     news_style = ""
+            #     reason_prefix = "선별 이유: "
+            
+            # 기본 스타일과 프리픽스 설정 (재평가 여부와 관계없이)
+            news_style = ""
+            reason_prefix = "선별 이유: "
             
             # 최종 선정된 뉴스 표시
             for news in analysis_result["final_selection"]:
@@ -622,6 +620,50 @@ if st.button("뉴스 분석 시작", type="primary"):
             
             st.markdown("---")
 
+    # 모든 키워드 분석이 끝난 후 카테고리별 통합 완료 메시지
+    st.success(f"✅ 선택된 {len(selected_categories)}개 카테고리 분석 완료!")
+    
+    # 5단계: 최종 선택 결과 표시 (루프 바깥으로 이동)
+    st.markdown("<div class='subtitle'>🔍 최종 선택 결과</div>", unsafe_allow_html=True)
+    
+    # 모든 키워드의 최종 선정 뉴스를 통합하여 표시
+    all_final_news = []
+    for keyword, result in all_results.items():
+        if 'final_selection' in result:
+            all_final_news.extend(result['final_selection'])
+    
+    # 최종 선정된 뉴스 표시
+    for news in all_final_news:
+        date_str = format_date(news.get('date', ''))
+        
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+            formatted_date = date_obj.strftime('%m/%d')
+        except Exception as e:
+            try:
+                date_obj = datetime.strptime(date_str, '%a, %d %b %Y %H:%M:%S %Z')
+                formatted_date = date_obj.strftime('%m/%d')
+            except Exception as e:
+                formatted_date = date_str if date_str else '날짜 정보 없음'
+
+        url = news.get('url', 'URL 정보 없음')
+        press = news.get('press', '언론사 정보 없음')
+        
+        st.markdown(f"""
+            <div class="selected-news">
+                <div class="news-title-large">{news['title']} ({formatted_date})</div>
+                <div class="news-url">🔗 <a href="{url}" target="_blank">{url}</a></div>
+                <div class="selection-reason">
+                    • 선별 이유: {news['reason']}
+                </div>
+                <div class="news-summary">
+                    • 키워드: {', '.join(news.get('keywords', []))} | 관련 계열사: {', '.join(news.get('affiliates', []))} | 언론사: {press}
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+    
     # 모든 키워드 분석이 끝난 후 이메일 미리보기 섹션 추가
     st.markdown("<div class='subtitle'>📧 이메일 미리보기</div>", unsafe_allow_html=True)
     
@@ -856,3 +898,189 @@ else:
 # 푸터
 st.markdown("---")
 st.markdown("© 2025 PwC 뉴스 분석기 | 회계법인 관점의 뉴스 분석 도구")
+
+# RSS 기반 뉴스 수집 함수들
+def collect_news_from_rss(keyword, start_date, end_date):
+    """RSS 피드에서 뉴스 수집 - 모든 언론사에서 키워드 기반으로 수집"""
+    news_list = []
+    
+    # 주요 언론사 RSS 피드 목록 (한국 주요 언론사들)
+    rss_feeds = {
+        '조선일보': 'https://www.chosun.com/arc/outboundfeeds/rss/',
+        '중앙일보': 'https://rss.joins.com/joins_news_list.xml',
+        '동아일보': 'https://www.donga.com/news/RSS/newsflash.xml',
+        '한국일보': 'https://www.hankookilbo.com/rss/rss.xml',
+        '경향신문': 'https://www.khan.co.kr/rss/rssdata/kh_news.xml',
+        '한겨레': 'https://www.hani.co.kr/rss/',
+        '서울신문': 'https://www.seoul.co.kr/rss/',
+        '매일경제': 'https://www.mk.co.kr/rss/30000001/',
+        '한국경제': 'https://www.hankyung.com/rss/',
+        '이데일리': 'https://www.edaily.co.kr/rss/',
+        '머니투데이': 'https://www.mt.co.kr/rss/',
+        '파이낸셜뉴스': 'https://www.fnnews.com/rss/rss.xml',
+        '아시아경제': 'https://www.asiae.co.kr/rss/',
+        '뉴스1': 'https://www.news1.kr/rss/',
+        '연합뉴스': 'https://www.yonhapnews.co.kr/feed/',
+        '뉴시스': 'https://www.newsis.com/rss/',
+        '스포츠조선': 'https://sports.chosun.com/rss/',
+        '스포츠동아': 'https://sports.donga.com/rss/',
+        '스포츠한국': 'https://sports.hankooki.com/rss/',
+        '스포츠경향': 'https://sports.khan.co.kr/rss/'
+    }
+    
+    for press_name, rss_url in rss_feeds.items():
+        try:
+            # RSS 피드 파싱
+            feed = feedparser.parse(rss_url)
+            
+            for entry in feed.entries:
+                # 키워드 검색 (제목과 요약에서 검색)
+                if keyword.lower() in entry.title.lower() or keyword.lower() in entry.description.lower():
+                    # 날짜 파싱
+                    pub_date = parse_rss_date(entry.published)
+                    
+                    # 날짜 필터링만 적용 (언론사 필터링 제거)
+                    if start_date <= pub_date <= end_date:
+                        news_item = {
+                            'title': clean_title(entry.title),
+                            'url': entry.link,
+                            'date': pub_date.strftime('%Y-%m-%d'),
+                            'press': press_name,
+                            'summary': clean_summary(entry.description),
+                            'keywords': [keyword],
+                            'affiliates': []
+                        }
+                        news_list.append(news_item)
+                        
+        except Exception as e:
+            st.warning(f"{press_name} RSS 파싱 오류: {str(e)}")
+            continue
+    
+    return news_list
+
+def parse_rss_date(date_str):
+    """RSS 날짜 문자열을 datetime 객체로 변환"""
+    try:
+        # 다양한 RSS 날짜 형식 처리
+        date_formats = [
+            '%a, %d %b %Y %H:%M:%S %Z',
+            '%a, %d %b %Y %H:%M:%S %z',
+            '%Y-%m-%dT%H:%M:%S%z',
+            '%Y-%m-%d %H:%M:%S',
+            '%Y-%m-%d'
+        ]
+        
+        for fmt in date_formats:
+            try:
+                return datetime.strptime(date_str, fmt)
+            except:
+                continue
+                
+        # 기본값: 현재 시간
+        return datetime.now()
+        
+    except:
+        return datetime.now()
+
+def clean_title(title):
+    """뉴스 제목 정리"""
+    # 언론사명 패턴 제거 (예: "제목 - 조선일보")
+    title = re.sub(r'\s*-\s*[가-힣A-Za-z0-9\s]+$', '', title).strip()
+    return title
+
+def clean_summary(summary):
+    """뉴스 요약 정리"""
+    # HTML 태그 제거
+    soup = BeautifulSoup(summary, 'html.parser')
+    clean_text = soup.get_text()
+    # 연속된 공백 정리
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    return clean_text
+
+def analyze_news_with_ai(news_list, analysis_prompt):
+    """AI를 사용하여 뉴스 분석 및 선별"""
+    try:
+        # OpenAI API 호출 (실제 API 키는 환경변수에서 가져와야 함)
+        client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        
+        # 뉴스 목록을 JSON 형태로 변환
+        news_data = json.dumps([{
+            'title': news['title'],
+            'summary': news['summary'],
+            'press': news['press'],
+            'date': news['date']
+        } for news in news_list], ensure_ascii=False)
+        
+        # AI 분석 요청
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": analysis_prompt},
+                {"role": "user", "content": f"다음 뉴스 목록을 분석해주세요:\n\n{news_data}"}
+            ],
+            temperature=0.3
+        )
+        
+        # AI 응답 파싱
+        ai_response = response.choices[0].message.content
+        
+        # JSON 응답 파싱 시도
+        try:
+            result = json.loads(ai_response)
+            return result
+        except json.JSONDecodeError:
+            # JSON 파싱 실패 시 기본 구조 반환
+            return {
+                "selected_news": [],
+                "excluded_news": [],
+                "error": "AI 응답을 파싱할 수 없습니다."
+            }
+            
+    except Exception as e:
+        st.error(f"AI 분석 중 오류 발생: {str(e)}")
+        return {
+            "selected_news": [],
+            "excluded_news": [],
+            "error": f"AI 분석 실패: {str(e)}"
+        }
+
+def analyze_news_direct(keyword, start_date, end_date, trusted_press):
+    """직접 구현한 뉴스 분석 함수"""
+    
+    # 1단계: RSS에서 뉴스 수집
+    with st.spinner(f"'{keyword}' 관련 뉴스를 RSS에서 수집 중..."):
+        collected_news = collect_news_from_rss(keyword, start_date, end_date)
+    
+    if not collected_news:
+        return {
+            "collected_count": 0,
+            "final_selection": [],
+            "error": "수집된 뉴스가 없습니다."
+        }
+    
+    # 2단계: AI 분석 및 선별
+    with st.spinner(f"'{keyword}' 뉴스 분석 중..."):
+        analysis_result = analyze_news_with_ai(collected_news, analysis_prompt)
+    
+    # 3단계: 결과 정리
+    if "selected_news" in analysis_result:
+        # AI 응답을 기존 형식에 맞게 변환
+        final_selection = []
+        for selected in analysis_result["selected_news"]:
+            # 원본 뉴스에서 해당 항목 찾기
+            for news in collected_news:
+                if news['title'] == selected['title']:
+                    final_selection.append(news)
+                    break
+        
+        return {
+            "collected_count": len(collected_news),
+            "final_selection": final_selection,
+            "ai_analysis": analysis_result
+        }
+    else:
+        return {
+            "collected_count": len(collected_news),
+            "final_selection": [],
+            "error": analysis_result.get("error", "알 수 없는 오류")
+        }

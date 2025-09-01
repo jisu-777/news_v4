@@ -74,7 +74,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def collect_news_from_naver_api(category_keywords, start_date, end_date, max_per_keyword=50):
+def collect_news_from_naver_api(category_keywords, start_date, end_date, max_per_keyword=7):
     """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집"""
     all_news = []
     
@@ -137,13 +137,17 @@ def collect_news_from_naver_api(category_keywords, start_date, end_date, max_per
                 
                 # 날짜 범위 확인
                 if start_date <= pub_date <= end_date:
+                    # 언론사 정보 추출
+                    press_info = extract_press_from_title(item.get('title', ''))
+                    
                     news_item = {
                         'title': clean_html_entities(item.get('title', '')),
                         'url': item.get('link', ''),
                         'date': pub_date.strftime('%Y-%m-%d'),
                         'summary': clean_html_entities(item.get('description', '')),
                         'keyword': keyword,
-                        'raw_press': extract_press_from_title(item.get('title', ''))
+                        'raw_press': press_info,
+                        'extracted_press': press_info.get('extracted_press', '')
                     }
                     all_news.append(news_item)
                     news_count += 1
@@ -176,11 +180,28 @@ def clean_html_entities(text):
     return clean_text
 
 def extract_press_from_title(title):
-    """뉴스 제목에서 언론사명 추출 (AI가 판별할 수 있도록 원본 정보 제공)"""
-    # 기본적인 언론사명 패턴 제거
+    """뉴스 제목에서 언론사명 추출 - 개선된 버전"""
+    if not title:
+        return {
+            'clean_title': '',
+            'extracted_press': '',
+            'original_title': ''
+        }
+    
+    # 다양한 언론사 표기 패턴
     press_patterns = [
-        r'\s*-\s*[가-힣A-Za-z0-9\s]+$',  # "제목 - 언론사명" 패턴
-        r'\s*\[[가-힣A-Za-z0-9\s]+\]\s*$',  # "제목 [언론사명]" 패턴
+        # "제목 - 언론사명" 패턴 (가장 일반적)
+        r'\s*[-–—]\s*([가-힣A-Za-z0-9\s&]+)$',
+        # "제목 [언론사명]" 패턴
+        r'\s*\[([가-힣A-Za-z0-9\s&]+)\]\s*$',
+        # "제목 (언론사명)" 패턴
+        r'\s*\(([가-힣A-Za-z0-9\s&]+)\)\s*$',
+        # "제목 | 언론사명" 패턴
+        r'\s*\|\s*([가-힣A-Za-z0-9\s&]+)$',
+        # "제목 / 언론사명" 패턴
+        r'\s*/\s*([가-힣A-Za-z0-9\s&]+)$',
+        # "제목 : 언론사명" 패턴
+        r'\s*:\s*([가-힣A-Za-z0-9\s&]+)$',
     ]
     
     clean_title = title
@@ -189,9 +210,35 @@ def extract_press_from_title(title):
     for pattern in press_patterns:
         match = re.search(pattern, title)
         if match:
-            extracted_press = match.group().strip(' -[]')
+            # 그룹이 있는 경우 첫 번째 그룹 사용, 없는 경우 전체 매치 사용
+            press_text = match.group(1) if len(match.groups()) > 0 else match.group(0)
+            extracted_press = press_text.strip()
+            
+            # 제목에서 언론사 부분 제거
             clean_title = re.sub(pattern, '', title).strip()
-            break
+            
+            # 추출된 언론사가 너무 길거나 의미없는 경우 필터링
+            if len(extracted_press) > 20 or extracted_press.lower() in ['뉴스', '기사', '보도']:
+                extracted_press = ""
+                clean_title = title  # 원본 제목 유지
+            else:
+                break
+    
+    # 언론사가 추출되지 않은 경우 추가 시도
+    if not extracted_press:
+        # 제목 끝에 있는 일반적인 언론사명 패턴 확인
+        common_press = [
+            '연합뉴스', '뉴시스', '매일경제', '한국경제', '서울경제', '이데일리',
+            '머니투데이', '아시아경제', '파이낸셜뉴스', '헤럴드경제', '경향신문',
+            '조선일보', '중앙일보', '동아일보', '한겨레', '한국일보', '국민일보',
+            '세계일보', '문화일보', '서울신문', '경기일보', '부산일보', '대구일보'
+        ]
+        
+        for press in common_press:
+            if press in title:
+                extracted_press = press
+                clean_title = title.replace(press, '').strip()
+                break
     
     return {
         'clean_title': clean_title,
@@ -222,18 +269,20 @@ def analyze_news_with_ai(news_list, category_name):
 
 1. [뉴스 제목]
    언론사: [언론사명]
+   선별 이유: [간단한 선별 이유]
    링크: [뉴스 URL]
 
 2. [뉴스 제목]
    언론사: [언론사명]
+   선별 이유: [간단한 선별 이유]
    링크: [뉴스 URL]
 
 ...
 
-분석할 뉴스 목록:
-{chr(10).join([f"{i+1}. {news['title']} - {news['url']}" for i, news in enumerate(news_list)])}
-
-**중요**: 최소 3개 뉴스는 반드시 선별하고, 너무 엄격하게 선별하지 말고 비즈니스 관점에서 유용할 수 있는 정보라면 포함하세요.
+**중요**: 
+- 최소 3개 뉴스는 반드시 선별하고, 너무 엄격하게 선별하지 말고 비즈니스 관점에서 유용할 수 있는 정보라면 포함하세요.
+- 언론사명은 정확하게 표기해주세요.
+- 선별 이유는 간단명료하게 작성해주세요.
 """
         
         response = client.chat.completions.create(
@@ -272,7 +321,7 @@ def analyze_news_with_ai(news_list, category_name):
         }
 
 def parse_ai_response(ai_response, news_list):
-    """AI 응답을 파싱하여 구조화된 데이터로 변환"""
+    """AI 응답을 파싱하여 구조화된 데이터로 변환 - 개선된 버전"""
     selected_news = []
     
     # AI 응답을 줄 단위로 분리
@@ -295,26 +344,21 @@ def parse_ai_response(ai_response, news_list):
             current_news = {}
             # 제목 추출 (숫자와 점 제거)
             title = re.sub(r'^\d+\.\s*', '', line)
-            # 중요도 추출
-            importance_match = re.search(r'중요도:\s*(높음|보통|낮음)', title)
-            if importance_match:
-                current_news['importance'] = importance_match.group(1)
-                title = re.sub(r'\s*-\s*중요도:\s*(높음|보통|낮음)', '', title)
             current_news['title'] = title.strip()
             
-        # 언론사 정보
-        elif line.startswith('언론사:'):
-            press = line.replace('언론사:', '').strip()
+        # 언론사 정보 (다양한 패턴 지원)
+        elif any(line.startswith(prefix) for prefix in ['언론사:', '언론사명:', '언론사']):
+            press = re.sub(r'^언론사[명]?:\s*', '', line).strip()
             current_news['press_analysis'] = press
             
         # 선별 이유
-        elif line.startswith('선별 이유:'):
-            reason = line.replace('선별 이유:', '').strip()
+        elif any(line.startswith(prefix) for prefix in ['선별 이유:', '선별이유:', '이유:', '분석:']):
+            reason = re.sub(r'^선별\s*이유[:\s]*', '', line).strip()
             current_news['selection_reason'] = reason
             
         # 링크
-        elif line.startswith('링크:'):
-            url = line.replace('링크:', '').strip()
+        elif any(line.startswith(prefix) for prefix in ['링크:', 'URL:', '주소:']):
+            url = re.sub(r'^링크[:\s]*|URL[:\s]*|주소[:\s]*', '', line).strip()
             current_news['url'] = url
             
         # 날짜 (원본 뉴스에서 찾기)
@@ -325,20 +369,37 @@ def parse_ai_response(ai_response, news_list):
                     current_news['date'] = news['date']
                     if 'url' not in current_news:
                         current_news['url'] = news['url']
+                    # 원본 뉴스의 언론사 정보도 활용
+                    if 'press_analysis' not in current_news and news.get('raw_press', {}).get('extracted_press'):
+                        current_news['press_analysis'] = news['raw_press']['extracted_press']
                     break
     
     # 마지막 뉴스 추가
     if current_news and 'title' in current_news:
         selected_news.append(current_news)
     
-    # 필수 필드가 없는 경우 기본값 설정
+    # 필수 필드가 없는 경우 기본값 설정 및 원본 뉴스와 매칭
     for news in selected_news:
         if 'importance' not in news:
             news['importance'] = '보통'
-        if 'press_analysis' not in news:
-            news['press_analysis'] = '언론사 정보 없음'
+        
+        # 언론사 정보가 없는 경우 원본 뉴스에서 찾기
+        if 'press_analysis' not in news or not news['press_analysis']:
+            for original_news in news_list:
+                if (news['title'] in original_news['title'] or 
+                    original_news['title'] in news['title']):
+                    extracted_press = original_news.get('raw_press', {}).get('extracted_press', '')
+                    if extracted_press:
+                        news['press_analysis'] = extracted_press
+                    else:
+                        news['press_analysis'] = '언론사 정보 없음'
+                    break
+            else:
+                news['press_analysis'] = '언론사 정보 없음'
+        
         if 'selection_reason' not in news:
             news['selection_reason'] = 'AI가 선별한 뉴스'
+        
         if 'date' not in news:
             news['date'] = '날짜 정보 없음'
     
@@ -416,7 +477,7 @@ def main():
                     category_keywords, 
                     start_dt, 
                     end_dt, 
-                    max_per_keyword=50
+                    max_per_keyword=7
                 )
             
             if not news_list:
@@ -462,7 +523,7 @@ def display_results(all_results, selected_categories):
         analysis = result['analysis_result']
         
         # 카테고리별 결과 카드
-        with st.expander(f"🏷️ {category} (수집: {collected_count}건)", expanded=True):
+        with st.expander(f"🏷️ {category} ", expanded=True):
             if 'error' in analysis:
                 st.error(f"분석 오류: {analysis['error']}")
                 continue
@@ -470,15 +531,28 @@ def display_results(all_results, selected_categories):
             selected_news = analysis.get('selected_news', [])
             selected_count = analysis.get('selected_count', 0)
             
-            st.info(f"📈 AI 분석 결과: {collected_count}건 중 {selected_count}건 선별")
+            st.info(f"📈 AI 분석 결과: {selected_count}건 선별")
             
             if selected_news:
                 # 테이블 형태로 표시
                 table_data = []
                 for news in selected_news:
+                    # 원본 뉴스에서 언론사 정보 확인
+                    original_press = ""
+                    for original_news in news_list:
+                        if (news.get('title', '') in original_news.get('title', '') or 
+                            original_news.get('title', '') in news.get('title', '')):
+                            original_press = original_news.get('extracted_press', '')
+                            break
+                    
+                    # AI 분석 결과와 원본 언론사 정보 비교
+                    ai_press = news.get('press_analysis', '언론사 정보 없음')
+                    final_press = ai_press if ai_press and ai_press != '언론사 정보 없음' else original_press
+                    
                     table_data.append({
                         "제목": news.get('title', '제목 없음'),
-                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
+                        "언론사": final_press or '언론사 정보 없음',
+                        "선별 이유": news.get('selection_reason', 'AI가 선별한 뉴스'),
                         "링크": news.get('url', '링크 없음')
                     })
                 

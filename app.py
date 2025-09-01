@@ -413,7 +413,7 @@ st.markdown("""
 st.markdown("---")
 col1, col2 = st.columns([1, 4])
 with col1:
-    st.image("logo_orange.png", width=100, use_column_width=False)
+    st.image("logo_orange.png", width=100, use_container_width=False)
 with col2:
     st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
 st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
@@ -631,7 +631,7 @@ if st.button("뉴스 분석 시작", type="primary"):
     for i, keyword in enumerate(selected_keywords, 1):
         with st.spinner(f"'{keyword}' 관련 뉴스를 수집하고 분석 중입니다..."):
             # 해당 키워드의 연관 검색어 확장
-            related_keywords = st.session_state.company_keyword_map.get(keyword, [keyword])
+            related_keywords = COMPANY_KEYWORD_MAP.get(keyword, [keyword])
             
             # 연관 검색어 표시
             st.write(f"'{keyword}' 연관 검색어로 검색 중: {', '.join(related_keywords)}")

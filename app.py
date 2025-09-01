@@ -428,80 +428,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 로고와 제목
-col1, col2 = st.columns([1, 5])
-with col1:
-    # 로고 표시
-    logo_path = "logo_orange.png"
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=100)
-    else:
-        st.error("로고 파일을 찾을 수 없습니다. 프로젝트 루트에 'logo_orange.png' 파일을 추가해주세요.")
+# 메인 타이틀
+st.markdown("---")
+st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
+st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
 
-with col2:
-    # 메인 타이틀 (로고 포함)
-    col1, col2, col3 = st.columns([1, 3, 1])
-    
-    with col1:
-        st.image("logo_orange.png", width=80)
-    
-    with col2:
-        st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
-    
-    with col3:
-        st.write("")  # 빈 공간
-    
-    st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
-    
-    # 브라우저 탭 제목 설정
-    st.markdown("<script>document.title = 'PwC 뉴스 분석기';</script>", unsafe_allow_html=True)
+# 브라우저 탭 제목 설정
+st.markdown("<script>document.title = 'PwC 뉴스 분석기';</script>", unsafe_allow_html=True)
 
 # 기본 선택 키워드 카테고리를 삼일PwC_핵심으로 설정
-    DEFAULT_KEYWORDS = COMPANY_CATEGORIES["Anchor"]
+DEFAULT_KEYWORDS = COMPANY_CATEGORIES["Anchor"]
 
 # 사이드바 설정
-    st.sidebar.title("🔍 PwC 뉴스 분석기")
+st.sidebar.title("🔍 PwC 뉴스 분석기")
 
-# 0단계: 기본 설정
-st.sidebar.markdown("### 📋 0단계: 기본 설정")
 
-# 유효 언론사 설정
-valid_press_dict = st.sidebar.text_area(
-    "📰 유효 언론사 설정 ",
-    value="""조선일보: ["조선일보", "chosun", "chosun.com"]
-    중앙일보: ["중앙일보", "joongang", "joongang.co.kr", "joins.com"]
-    동아일보: ["동아일보", "donga", "donga.com"]
-    조선비즈: ["조선비즈", "chosunbiz", "biz.chosun.com"]
-    매거진한경: ["매거진한경", "magazine.hankyung", "magazine.hankyung.com"]
-    한국경제: ["한국경제", "한경", "hankyung", "hankyung.com", "한경닷컴"]
-    매일경제: ["매일경제", "매경", "mk", "mk.co.kr"]
-    연합뉴스: ["연합뉴스", "yna", "yna.co.kr"]
-    파이낸셜뉴스: ["파이낸셜뉴스", "fnnews", "fnnews.com"]
-    데일리팜: ["데일리팜", "dailypharm", "dailypharm.com"]
-    IT조선: ["it조선", "it.chosun.com", "itchosun"]
-    머니투데이: ["머니투데이", "mt", "mt.co.kr"]
-    비즈니스포스트: ["비즈니스포스트", "businesspost", "businesspost.co.kr"]
-    이데일리: ["이데일리", "edaily", "edaily.co.kr"]
-    아시아경제: ["아시아경제", "asiae", "asiae.co.kr"]
-    뉴스핌: ["뉴스핌", "newspim", "newspim.com"]
-    뉴시스: ["뉴시스", "newsis", "newsis.com"]
-    헤럴드경제: ["헤럴드경제", "herald", "heraldcorp", "heraldcorp.com"]""",
-    help="분석에 포함할 신뢰할 수 있는 언론사와 그 별칭을 설정하세요. 형식: '언론사: [별칭1, 별칭2, ...]'",
-    key="valid_press_dict"
-)
-
-# 추가 언론사 설정 (재평가 시에만 사용됨)
-additional_press_dict = st.sidebar.text_area(
-    "📰 추가 언론사 설정 (재평가 시에만 사용)",
-    value="""철강금속신문: ["철강금속신문", "snmnews", "snmnews.com"]
-    에너지신문: ["에너지신문", "energy-news", "energy-news.co.kr"]
-    이코노믹데일리: ["이코노믹데일리", "economidaily", "economidaily.com"]""",
-    help="기본 언론사에서 뉴스가 선택되지 않을 경우, 재평가 단계에서 추가로 고려할 언론사와 별칭을 설정하세요. 형식: '언론사: [별칭1, 별칭2, ...]'",
-    key="additional_press_dict"
-)
-
-# 구분선 추가
-st.sidebar.markdown("---")
 
 # 날짜 필터 설정
 st.sidebar.markdown("### 📅 날짜 필터")
@@ -552,6 +493,7 @@ st.sidebar.markdown("### 🔍 분석할 키워드 선택")
 selected_categories = st.sidebar.multiselect(
     "키워드 카테고리를 선택하세요 (복수 선택 가능)",
     options=list(KEYWORD_CATEGORIES.keys()),
+    default=list(KEYWORD_CATEGORIES.keys()),  # 디폴트로 전체 선택
     help="분석할 키워드 카테고리를 하나 이상 선택하세요. 클릭만으로도 여러 개 선택할 수 있습니다."
 )
 
@@ -563,20 +505,11 @@ for category in selected_categories:
 # 선택된 키워드들
 selected_keywords = SELECTED_KEYWORDS.copy()
 
-# 선택된 키워드 정보 표시 (간단하게)
+# 선택요약 표시
 st.sidebar.markdown("---")
-st.sidebar.markdown("### ℹ️ 선택된 키워드 정보")
+st.sidebar.markdown("### 📋 선택요약")
+st.sidebar.info(f"**날짜범위:** {start_date} ~ {end_date}")
 st.sidebar.info(f"**선택된 카테고리:** {len(selected_categories)}개")
-st.sidebar.info(f"**총 키워드 수:** {len(selected_keywords)}개")
-
-# 미리보기 버튼
-with st.sidebar.expander("🔍 검색 키워드 미리보기"):
-    if selected_keywords:
-        st.info(f"**{len(selected_keywords)}개 키워드가 선택되어 검색됩니다.**")
-        for keyword in selected_keywords:
-            st.write(f"• {keyword}")
-    else:
-        st.info("키워드가 선택되지 않았습니다.")
 
 # 검색용 키워드 리스트 (선택된 키워드 + 연관 검색어)
 search_keywords = []
@@ -1229,4 +1162,4 @@ else:
 
 # 푸터
 st.markdown("---")
-st.markdown("© 2024 PwC 뉴스 분석기 | 회계법인 관점의 뉴스 분석 도구")
+st.markdown("© 2025 PwC 뉴스 분석기 | 회계법인 관점의 뉴스 분석 도구")

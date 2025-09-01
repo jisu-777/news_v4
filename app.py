@@ -407,11 +407,11 @@ st.markdown("""
 col1, col2 = st.columns([1, 5])
 with col1:
     # 로고 표시
-    logo_path = "pwc_logo.png"
+    logo_path = "logo_orange.png"
     if os.path.exists(logo_path):
         st.image(logo_path, width=100)
     else:
-        st.error("로고 파일을 찾을 수 없습니다. 프로젝트 루트에 'pwc_logo.png' 파일을 추가해주세요.")
+        st.error("로고 파일을 찾을 수 없습니다. 프로젝트 루트에 'logo_orange.png' 파일을 추가해주세요.")
 
 with col2:
     st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
@@ -545,19 +545,11 @@ for group in GROUPS:
             # 선택된 기업들을 전체 목록에 추가
             selected_companies.extend(selected_in_group)
             
-            # 선택된 기업 수 표시
-            if selected_in_group:
-                st.success(f"✅ {group}: {len(selected_in_group)}개 기업 선택됨")
-            else:
-                st.info(f"ℹ️ {group}: 선택된 기업 없음")
+            # 선택된 기업 수 표시 (UI에서 숨김)
+            pass
 
-# 전체 선택된 기업 수 표시
-if selected_companies:
-    st.sidebar.success(f"🎯 **총 {len(selected_companies)}개 기업 선택됨**")
-    st.sidebar.markdown("**선택된 기업들:**")
-    for company in selected_companies:
-        st.sidebar.markdown(f"• {company}")
-else:
+# 전체 선택된 기업 수 표시 (UI에서 숨김)
+if not selected_companies:
     st.sidebar.warning("⚠️ 분석할 기업을 선택해주세요!")
 
 # 새로운 기업 추가 섹션 (그룹 선택 포함)
@@ -864,7 +856,7 @@ st.sidebar.markdown("### 🤖 AI 프롬프트 설정")
 st.sidebar.info("AI 분석에 사용되는 프롬프트는 config.py에서 관리됩니다.")
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📋 1단계: 제외 판단 기준")
+st.sidebar.markdown("### 📋 1단계: 제외 기준")
 
 # 제외 기준 설정 - 기본 기준만 표시하고 사용자 수정 허용
 exclusion_criteria = st.sidebar.text_area(
@@ -1263,7 +1255,7 @@ else:
     
     #### 분석 결과 확인:
     - 각 키워드별 최종 선정된 중요 뉴스
-    - 선정 과정의 중간 결과(제외/보류/유지, 그룹핑 등)
+         - 선정 과정의 중간 결과(그룹핑 등)
     - 선정된 모든 뉴스의 요약 이메일 미리보기
     - 디버그 정보 (시스템 프롬프트, AI 응답 등)
     
@@ -1271,4 +1263,4 @@ else:
 
 # 푸터
 st.markdown("---")
-st.markdown("© 2024 PwC 뉴스 분석기 | 회계법인 관점의 뉴스 분석 도구")
+st.markdown("© 2025 PwC 뉴스 분석기 | 회계법인 관점의 뉴스 분석 도구")

@@ -39,7 +39,7 @@ class NewsService:
         Args:
             keywords: 검색할 키워드 리스트
             max_results: 전체 키워드에서 최대 결과 수 (기본값: 100)
-            trusted_press: 신뢰할 수 있는 언론사 목록
+            trusted_press: 신뢰할 수 있는 언론사 목록 (AI 필터링용)
             
         Returns:
             수집된 뉴스 리스트
@@ -48,72 +48,20 @@ class NewsService:
         combined_query = " OR ".join(keywords)
         print(f"OR 조건으로 검색: {combined_query}")
         
-        if trusted_press:
-            print(f"신뢰할 수 있는 언론사에서만 뉴스 수집 시작: {len(trusted_press)}개 언론사")
-            news_results = self.google_news.search_by_keywords_or(
-                combined_query, 
-                max_results, 
-                trusted_press
-            )
-        else:
-            print("전체 언론사에서 뉴스 수집 시작")
-            news_results = self.google_news.search_by_keywords_or(
-                combined_query, 
-                max_results
-            )
+        # 전체 언론사에서 한번에 검색 (빠름)
+        all_news = self.google_news.search_all_press_unified(combined_query, max_results)
+        print(f"전체 검색 결과: {len(all_news)}개")
         
-        print(f"OR 검색 결과: {len(news_results)}개")
-        return news_results
+        # AI로 유효 언론사 필터링
+        if trusted_press:
+            print("AI로 유효 언론사 필터링 시작...")
+            filtered_news = self._filter_by_gpt_trusted_press(all_news, trusted_press)
+            print(f"AI 필터링 완료: {len(filtered_news)}개 뉴스 유지")
+            return filtered_news
+        else:
+            print("신뢰할 수 있는 언론사 목록이 없어 전체 결과 반환")
+            return all_news
 
-    def collect_news_by_keywords_individual(self, keywords: List[str], max_results: int = 100, 
-                                          trusted_press: Dict = None) -> List[Dict[str, Any]]:
-        """
-        키워드 리스트로 뉴스 수집 (기존 방식: 각 키워드별 개별 검색)
-        
-        Args:
-            keywords: 검색할 키워드 리스트
-            max_results: 각 키워드당 최대 결과 수 (기본값: 100)
-            trusted_press: 신뢰할 수 있는 언론사 목록
-            
-        Returns:
-            수집된 뉴스 리스트
-        """
-        all_news_data = []
-        
-        # 신뢰할 수 있는 언론사가 지정된 경우
-        if trusted_press:
-            print(f"신뢰할 수 있는 언론사에서만 뉴스 수집 시작: {len(trusted_press)}개 언론사")
-            for keyword in keywords:
-                print(f"키워드 '{keyword}' 검색 중... (신뢰할 수 있는 언론사에서만)")
-                news_results = self.google_news.search_by_keyword(
-                    keyword, 
-                    k=max_results, 
-                    trusted_press=trusted_press
-                )
-                all_news_data.extend(news_results)
-                print(f"키워드 '{keyword}' 검색 결과: {len(news_results)}개")
-        else:
-            # 기존 로직: 전체 언론사에서 검색
-            print("전체 언론사에서 뉴스 수집 시작")
-            for keyword in keywords:
-                print(f"키워드 '{keyword}' 검색 중...")
-                news_results = self.google_news.search_by_keyword(keyword, k=max_results)
-                all_news_data.extend(news_results)
-                print(f"키워드 '{keyword}' 검색 결과: {len(news_results)}개")
-        
-        # 중복 URL 제거
-        unique_urls = set()
-        unique_news_data = []
-        
-        for news_item in all_news_data:
-            url = news_item.get('url', '')
-            if url and url not in unique_urls:
-                unique_urls.add(url)
-                unique_news_data.append(news_item)
-        
-        print(f"중복 제거 후 전체 뉴스 수: {len(unique_news_data)}개")
-        return unique_news_data
-    
     def filter_by_date_range(self, news_data: List[Dict], start_date: datetime, end_date: datetime) -> List[Dict]:
         """
         날짜 범위로 뉴스 필터링

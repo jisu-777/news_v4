@@ -815,6 +815,11 @@ if st.button("뉴스 분석 시작", type="primary"):
             plain_email_content += "  - AI 분석결과 금일자로 회계법인 관점에서 특별히 주목할 만한 기사가 없습니다.\n"
         else:
             for news in news_list:
+                # news 객체 유효성 검사
+                if not news or not isinstance(news, dict):
+                    print(f"유효하지 않은 뉴스 객체: {news}")
+                    continue
+                
                 # 날짜 형식 변환
                 date_str = news.get('date', '')
                 try:
@@ -860,6 +865,11 @@ if st.button("뉴스 분석 시작", type="primary"):
             for keyword, result in all_results.items():
                 if 'final_selection' in result:
                     for news in result['final_selection']:
+                        # news 객체 유효성 검사
+                        if not news or not isinstance(news, dict):
+                            print(f"워드 문서 생성 중 유효하지 않은 뉴스 객체: {news}")
+                            continue
+                        
                         news_with_keyword = news.copy()
                         news_with_keyword['keyword'] = keyword
                         all_final_news.append(news_with_keyword)
@@ -898,6 +908,11 @@ if st.button("뉴스 분석 시작", type="primary"):
             for keyword, result in all_results.items():
                 if 'final_selection' in result:
                     for news in result['final_selection']:
+                        # news 객체 유효성 검사
+                        if not news or not isinstance(news, dict):
+                            print(f"CSV 생성 중 유효하지 않은 뉴스 객체: {news}")
+                            continue
+                        
                         csv_data.append({
                             '키워드': clean_html_entities(keyword),
                             '제목': clean_html_entities(news.get('title', '')),

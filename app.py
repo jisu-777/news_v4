@@ -512,8 +512,8 @@ st.sidebar.markdown("---")
 # 기본 모델 설정 (UI에서 선택 불가)
 selected_model = DEFAULT_GPT_MODEL
 
-# 검색 결과 수 - 키워드당 200개로 설정 (신뢰할 수 있는 언론사에서만)
-max_results = 200
+# 검색 결과 수 - 키워드당 100개로 설정 (신뢰할 수 있는 언론사에서만)
+max_results = 100
 
 # config.py의 설정값들을 직접 사용
 exclusion_criteria = EXCLUSION_CRITERIA
@@ -625,7 +625,7 @@ if st.button("뉴스 분석 시작", type="primary"):
     [중복 처리 기준]
     {duplicate_handling}
     """
-    st.info("📊 **회계법인 기준 적용됨**")
+    # st.info("📊 **회계법인 기준 적용됨**")  # UI에서 숨김
     
     # 키워드별 분석 실행
     for i, keyword in enumerate(selected_keywords, 1):
@@ -633,8 +633,8 @@ if st.button("뉴스 분석 시작", type="primary"):
             # 해당 키워드의 연관 검색어 확장
             related_keywords = COMPANY_KEYWORD_MAP.get(keyword, [keyword])
             
-            # 연관 검색어 표시
-            st.write(f"'{keyword}' 연관 검색어로 검색 중: {', '.join(related_keywords)}")
+            # 연관 검색어 표시 (UI에서 숨김)
+            # st.write(f"'{keyword}' 연관 검색어로 검색 중: {', '.join(related_keywords)}")
             
             # 날짜/시간 객체 생성
             start_dt = datetime.combine(start_date, start_time)
@@ -653,12 +653,12 @@ if st.button("뉴스 분석 시작", type="primary"):
                 # 결과 저장
                 all_results[keyword] = analysis_result
                 
-                # 결과 표시
+                # 결과 표시 (UI에서 숨김)
                 st.success(f"'{keyword}' 분석 완료!")
-                st.write(f"수집된 뉴스: {analysis_result['collected_count']}개")
-                st.write(f"날짜 필터링 후: {analysis_result['date_filtered_count']}개")
-                st.write(f"언론사 필터링 후: {analysis_result['press_filtered_count']}개")
-                st.write(f"최종 선별: {len(analysis_result['final_selection'])}개")
+                # st.write(f"수집된 뉴스: {analysis_result['collected_count']}개")
+                # st.write(f"날짜 필터링 후: {analysis_result['date_filtered_count']}개")
+                # st.write(f"언론사 필터링 후: {analysis_result['press_filtered_count']}개")
+                # st.write(f"최종 선별: {len(analysis_result['final_selection'])}개")
                 
                 # 최종 선별된 뉴스 표시
                 if analysis_result['final_selection']:

@@ -31,14 +31,48 @@ class NewsService:
     def __init__(self):
         self.google_news = GoogleNews()
     
-    def collect_news_by_keywords(self, keywords: List[str], max_results: int = 200, 
+    def collect_news_by_keywords(self, keywords: List[str], max_results: int = 100, 
                                 trusted_press: Dict = None) -> List[Dict[str, Any]]:
         """
-        키워드 리스트로 뉴스 수집 (신뢰할 수 있는 언론사에서만)
+        키워드 리스트로 뉴스 수집 (OR 조건으로 한번에 검색)
         
         Args:
             keywords: 검색할 키워드 리스트
-            max_results: 각 키워드당 최대 결과 수 (기본값: 200)
+            max_results: 전체 키워드에서 최대 결과 수 (기본값: 100)
+            trusted_press: 신뢰할 수 있는 언론사 목록
+            
+        Returns:
+            수집된 뉴스 리스트
+        """
+        # OR 조건으로 모든 키워드를 한번에 검색
+        combined_query = " OR ".join(keywords)
+        print(f"OR 조건으로 검색: {combined_query}")
+        
+        if trusted_press:
+            print(f"신뢰할 수 있는 언론사에서만 뉴스 수집 시작: {len(trusted_press)}개 언론사")
+            news_results = self.google_news.search_by_keywords_or(
+                combined_query, 
+                max_results, 
+                trusted_press
+            )
+        else:
+            print("전체 언론사에서 뉴스 수집 시작")
+            news_results = self.google_news.search_by_keywords_or(
+                combined_query, 
+                max_results
+            )
+        
+        print(f"OR 검색 결과: {len(news_results)}개")
+        return news_results
+
+    def collect_news_by_keywords_individual(self, keywords: List[str], max_results: int = 100, 
+                                          trusted_press: Dict = None) -> List[Dict[str, Any]]:
+        """
+        키워드 리스트로 뉴스 수집 (기존 방식: 각 키워드별 개별 검색)
+        
+        Args:
+            keywords: 검색할 키워드 리스트
+            max_results: 각 키워드당 최대 결과 수 (기본값: 100)
             trusted_press: 신뢰할 수 있는 언론사 목록
             
         Returns:
@@ -195,7 +229,7 @@ class NewsAnalysisService:
         print("=== 뉴스 수집 시작 ===")
         collected_news = self.news_service.collect_news_by_keywords(
             keywords, 
-            max_results=200,  # 키워드당 200개로 제한
+            max_results=100,  # 키워드당 100개로 제한
             trusted_press=trusted_press
         )
         

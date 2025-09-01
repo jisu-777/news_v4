@@ -302,7 +302,7 @@ GPT_MODELS = {
 DEFAULT_GPT_MODEL = "gpt-4.1"
 
 # 기본 뉴스 수집 개수
-DEFAULT_NEWS_COUNT = 200 
+DEFAULT_NEWS_COUNT = 100 
 
 # Email settings
 EMAIL_SETTINGS = {

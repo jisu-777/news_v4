@@ -152,8 +152,8 @@ def collect_news(state: AgentState) -> AgentState:
         # 검색어 설정 - 문자열 또는 리스트 처리
         keyword = state.get("keyword", "삼성")
         
-        # 검색 결과 수는 키워드당 200개로 제한
-        max_results = 200
+        # 검색 결과 수는 키워드당 100개로 제한
+        max_results = 100
         
         # 날짜 범위 가져오기
         start_datetime = state.get("start_datetime")
@@ -171,19 +171,34 @@ def collect_news(state: AgentState) -> AgentState:
         # 신뢰할 수 있는 언론사 설정 가져오기
         trusted_press = state.get("trusted_press", TRUSTED_PRESS_ALIASES)
         
-        # 모든 키워드에 대한 뉴스 수집
-        all_news_data = []
-        
-        # 각 키워드별로 뉴스 검색 및 결과 병합
-        for kw in keywords_to_search:
+        # OR 조건으로 모든 키워드를 한번에 검색
+        if len(keywords_to_search) > 1:
+            # 여러 키워드가 있는 경우 OR 검색 사용
+            combined_query = " OR ".join(keywords_to_search)
+            print(f"OR 조건으로 검색: {combined_query}")
+            
+            if trusted_press:
+                all_news_data = news.search_by_keywords_or(
+                    combined_query, 
+                    max_results, 
+                    trusted_press
+                )
+            else:
+                all_news_data = news.search_by_keywords_or(
+                    combined_query, 
+                    max_results
+                )
+            print(f"OR 검색 결과: {len(all_news_data)}개")
+        else:
+            # 단일 키워드인 경우 기존 방식 사용
+            kw = keywords_to_search[0]
             print(f"키워드 '{kw}' 검색 중... (신뢰할 수 있는 언론사에서만)")
-            news_results = news.search_by_keyword(
+            all_news_data = news.search_by_keyword(
                 kw, 
                 k=max_results, 
                 trusted_press=trusted_press
             )
-            all_news_data.extend(news_results)
-            print(f"키워드 '{kw}' 검색 결과: {len(news_results)}개")
+            print(f"키워드 '{kw}' 검색 결과: {len(all_news_data)}개")
         
         # 중복 URL 제거 (같은 URL이면 중복으로 간주)
         unique_urls = set()

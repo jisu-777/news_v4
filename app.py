@@ -430,7 +430,11 @@ st.markdown("""
 
 # 메인 타이틀
 st.markdown("---")
-st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
+col1, col2 = st.columns([1, 5])
+with col1:
+    st.image("logo_orange.png", width=80)
+with col2:
+    st.markdown("<h1 class='main-title'>PwC 뉴스 분석기</h1>", unsafe_allow_html=True)
 st.markdown("회계법인 관점에서 중요한 뉴스를 자동으로 분석하는 AI 도구")
 
 # 브라우저 탭 제목 설정
@@ -684,7 +688,7 @@ analysis_prompt = f"""
 }}
 
 [유효 언론사]
-{valid_press_dict}
+{TRUSTED_PRESS_ALIASES}
 
 [중복 처리 기준]
 {duplicate_handling}
@@ -696,7 +700,7 @@ if st.button("뉴스 분석 시작", type="primary"):
     news_service = NewsAnalysisService()
     
     # 유효 언론사 설정을 딕셔너리로 파싱
-    valid_press_config = parse_press_config(valid_press_dict)
+    valid_press_config = TRUSTED_PRESS_ALIASES
     
     # 이메일 미리보기를 위한 전체 내용 저장
     email_content = "[Client Intelligence]\n\n"

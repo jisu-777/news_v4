@@ -8,9 +8,20 @@ This file contains shared variables and configurations used across the news clip
 Centralizing these variables makes maintenance easier and ensures consistency.
 """
 
+import os
+
+# 네이버 뉴스 API 설정 (환경변수에서 가져옴)
+NAVER_API_SETTINGS = {
+    "client_id": os.getenv('NAVER_CLIENT_ID', ''),  # 환경변수에서 Client ID
+    "client_secret": os.getenv('NAVER_CLIENT_SECRET', ''),  # 환경변수에서 Client Secret
+    "base_url": "https://openapi.naver.com/v1/search/news.json",
+    "max_results_per_keyword": 50,  # 키워드당 최대 검색 결과 수
+    "sort": "date"  # 정렬 방식: date(최신순), sim(정확도순)
+}
+
 # 키워드 카테고리 정의 (UI에서는 카테고리만 표시, 키워드는 AI 분석 시에만 사용)
 KEYWORD_CATEGORIES = {
-    "삼일PwC": ["삼일PwC", "삼일회계법인", "PwC코리아", "삼일PwC코리아"],
+    "삼일PwC": ["삼일PWC", "삼일회계법인", "삼일", "PWC"],
     "회계업계_일반": ["회계법인", "외부감사", "공인회계사", "회계처리", "감사의견"],
     "주요기업": ["삼성", "SK", "현대차", "LG", "포스코", "롯데", "현대모비스"],
     "산업동향": ["반도체", "배터리", "자동차", "조선", "바이오", "AI", "신재생에너지"],

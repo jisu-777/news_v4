@@ -382,26 +382,30 @@ def analyze_news_with_ai(news_list, category_name):
         if category_name == "삼일PwC":
             # 삼일PwC 전용 상세 프롬프트
             analysis_prompt = f"""
-당신은 회계법인 전문 뉴스 분석가입니다. 삼일PwC 관련 뉴스를 분석하여 중요한 뉴스만 선별해주세요.
-무조건 1건의 기사는 포함해야합니다..
+당신은 회계법인 전문 뉴스 분석가입니다. 삼일PwC 관련 뉴스를 분석하여 중요한 뉴스만 선별하세요.
 
-단 중복 내용의 기사는 제외해주세요
+무조건 1건의 기사는 포함해야합니다.
 
+[포함(Y)]
+- 삼일PwC/삼일회계법인이 기사의 핵심 주제일 때
+- 삼일PwC가 사건에서 주된 역할(자문·감정·보고서·매각주관 등)을 맡았을 때
+- 삼일PwC 보고서·감정·코멘트가 기사 논거의 중심일 때
+- 삼일PwC 자체 발표·행사·보도자료
+- 컨소시엄 참여가 명확히 언급된 경우
 
+[제외(N)]
+- 단순 언급/경력 소개/배경 문장
+- 스포츠(야구단·축구단·선수·감독·구단 등)
+- 신제품 홍보/사회공헌/기부/ESG 캠페인
+- 광고성 기사/스폰서 콘텐츠
+- 시스템 오류/버그/장애 관련 단순 보도
+- 목표주가/증권사 리포트 중심 기사
+- 외국어 기사
 
-
-
-**제외(N)**
-- 스포츠단 기사 (야구단, 축구단, 선수/감독 등)
-
-- 단순 시스템 장애, 버그, 서비스 오류
-
-- 목표주가 기사
-
-- 광고성/스폰서/외국어 기사
-
-1
-
+[중복 제거]
+- 같은 이슈(동일 oid/aid 또는 제목 거의 동일)는 1건만 남긴다
+- 서로 다른 언론사라도 내용이 거의 같으면 1건만 선택
+- 단, 핵심 내용이 다르면 중복이 아님
 
 **중요**: 
 - **무조건 1개 이상의 뉴스를 반드시 선별해야 합니다.** 1개 미만으로 선별하면 안됩니다.
@@ -429,21 +433,29 @@ def analyze_news_with_ai(news_list, category_name):
         elif category_name == "경쟁사":
             # 경쟁사 전용 상세 프롬프트
             analysis_prompt = f"""
-당신은 회계법인 전문 뉴스 분석가입니다. 경쟁 회계법인(한영EY, 삼정KPMG, Deloitte, 안진회계법인 등) 관련 뉴스를 분석하여 중요한 뉴스만 선별해주세요. 무조건 1건의 기사는 남겨야합니다.
+당신은 회계법인 전문 뉴스 분석가입니다. 경쟁 회계법인(삼정KPMG, 한영EY, 딜로이트안진 등) 관련 뉴스를 분석하여 중요한 뉴스만 선별하세요.
 
-단 중복 내용의 기사는 제외해주세요
+무조건 1건의 기사는 포함해야합니다.
 
+[포함(Y)]
+- 경쟁사 회계법인이 기사 주제일 때
+- 경쟁사가 핵심 역할(자문·감정·보고서·매각주관 등)을 맡았을 때
+- 경쟁사 보고서·코멘트·발표가 기사 논거의 중심일 때
+- 경쟁사 자체 발표·행사·보도자료
 
+[제외(N)]
+- 단순 언급/경력 소개/배경 문장
+- 스포츠 기사
+- 신제품 홍보/사회공헌/기부/ESG 기사
+- 광고성/스폰서 기사
+- 시스템 오류/버그/장애 관련 단순 보도
+- 목표주가/증권사 리포트 기사
+- 외국어 기사
 
-**제외(N)**
-- 스포츠단 기사 (야구단, 축구단, 선수/감독 등)
-- 신제품 홍보/사회공헌/ESG/기부 기사
-- 단순 시스템 장애, 버그, 서비스 오류
-- 기술 성능/품질/테스트 홍보 기사
-- 목표주가 기사
-- 단순 언급, 경력 소개, 배경 문장 수준
-- 광고성/스폰서/외국어 기사
-
+[중복 제거]
+- 같은 이슈는 반드시 1건만 남긴다
+- 제목/내용 유사도가 높으면 중복으로 간주
+- 다만 핵심 사건이나 시점이 다르면 별개 이슈로 인정
 
 **중요**
 - 무조건 1개 이상은 반드시 선별해야 함
@@ -599,9 +611,39 @@ def analyze_news_with_ai(news_list, category_name):
         try:
             parsed_result = parse_ai_response(ai_response, news_list)
             
-            # AI가 선별한 결과 그대로 사용 (화이트리스트 필터링 제거)
-            if parsed_result.get("selected_news"):
-                st.info(f"[AI 선별 결과] {category_name}: {len(parsed_result['selected_news'])}개 기사 선별")
+            # ✅ 폴백: AI가 0건 선별하면, 우리가 1건은 자동으로 뽑는다.
+            if (not parsed_result.get("selected_news")) and news_list:
+                # 1) 언론사 신뢰도 우선순위
+                press_rank = {
+                    "조선일보": 1, "중앙일보": 2, "동아일보": 3,
+                    "한국경제": 4, "매일경제": 5, "연합뉴스": 6,
+                    "이데일리": 7, "아시아경제": 8, "뉴스핌": 9, "뉴시스": 10,
+                    "헤럴드경제": 11, "더벨": 12, "비즈니스포스트": 13, "머니투데이": 14
+                }
+                def score(n):
+                    p = n.get("press", "")
+                    return (press_rank.get(p, 100),  # 언론사 점수 낮을수록 우선
+                            n.get("date", "0000-00-00"))  # 날짜 최신 우선(문자열 비교 OK: YYYY-MM-DD)
+
+                # 2) 정렬 후 최상위 1건
+                best = sorted(news_list, key=score)[0]
+
+                parsed_result = {
+                    "selected_news": [{
+                        "title": best.get("title", "제목 없음"),
+                        "url": best.get("url", ""),
+                        "date": best.get("date", ""),
+                        "keyword": best.get("keyword", ""),
+                        "press_analysis": best.get("press", "언론사 정보 없음"),
+                        "selection_reason": "AI 무선별 → 폴백(언론사/최신성 기준 자동선택)",
+                        "importance": "보통",
+                    }],
+                    "total_analyzed": len(news_list),
+                    "selected_count": 1
+                }
+            
+            # AI 분석 후 필터링 정보 표시
+            st.info(f"[AI 선별 결과] {category_name}: {len(parsed_result['selected_news'])}개 기사 선별")
             
             return parsed_result
         except Exception as parse_error:
@@ -895,15 +937,17 @@ def display_results(all_results, selected_categories):
             selected_news = analysis.get('selected_news', [])
             selected_count = analysis.get('selected_count', 0)
             
-            st.info(f"📈 AI 분석 결과: {selected_count}건 선별")
+            st.info(f"📥 수집: {collected_count}건  |  ✅ 선별: {selected_count}건")
             
             if selected_news:
                 # 테이블 형태로 표시
                 table_data = []
                 for news in selected_news:
-                    # UI용 테이블 데이터 (키워드, 언론사 제외)
+                    # UI용 테이블 데이터 (언론사, 날짜 포함)
                     table_data.append({
                         "뉴스제목": news.get('title', '제목 없음'),
+                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
+                        "날짜": news.get('date', '날짜 없음'),
                         "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
                     })
                 

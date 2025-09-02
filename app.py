@@ -214,7 +214,6 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
                     
                     # 검색 쿼리를 키워드로 사용
                     search_keyword = query  # "삼일PWC OR 삼일회계법인" 형태
-                    st.info(f"[디버깅] 뉴스 수집 키워드: {search_keyword}")
                     
                     # 언론사 정보 추출 (originallink 우선 사용)
                     press_name = extract_press_from_url(
@@ -714,10 +713,8 @@ def parse_ai_response(ai_response, news_list):
                     current_news['date'] = news['date']
                     if 'url' not in current_news:
                         current_news['url'] = news['url']
-                    # 원본 뉴스의 키워드 정보 저장 (디버깅용 로그 추가)
-                    keyword = news.get('keyword', '')
-                    current_news['keyword'] = keyword
-                    st.info(f"[디버깅] 키워드 매칭: {keyword}")
+                    # 원본 뉴스의 키워드 정보 저장
+                    current_news['keyword'] = news.get('keyword', '')
                     # 언론사 정보 우선순위: 우리 매핑 > AI 추출
                     original_press = news.get('press', '')
                     if original_press and original_press != '언론사 정보 없음':

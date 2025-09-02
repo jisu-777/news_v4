@@ -203,8 +203,9 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
                 
                 # 날짜 및 시간 범위 확인 (카테고리별 다르게 적용)
                 if category_name in ["삼일PwC", "경쟁사"]:
-                    # 삼일PwC, 경쟁사: 날짜 필터링 없음 (모든 기사 수집)
-                    date_in_range = True
+                    # 삼일PwC, 경쟁사: 설정된 마지막 시간 기준 3일 전까지
+                    three_days_ago = end_dt - timedelta(days=3)
+                    date_in_range = pub_date >= three_days_ago
                 else:
                     # 다른 카테고리: 시간까지 비교
                     date_in_range = start_dt <= pub_date <= end_dt

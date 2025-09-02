@@ -154,6 +154,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             items = all_items
             
             st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집 (목표: {target_count}개)")
+            st.info(f"[날짜 범위] {start_dt.strftime('%Y-%m-%d %H:%M')} ~ {end_dt.strftime('%Y-%m-%d %H:%M')}")
             
             news_count_per_keyword = {}
             for keyword in keywords:
@@ -712,9 +713,9 @@ def main():
     st.sidebar.markdown("#### ⏰ 시간 범위")
     col3, col4 = st.sidebar.columns(2)
     with col3:
-        start_time = st.time_input("시작 시간", value=time(10, 0), help="기본값: 오전 10시")
+        start_time = st.time_input("시작 시간", value=time(0, 0), help="기본값: 오전 12시 (자정)")
     with col4:
-        end_time = st.time_input("종료 시간", value=time(10, 0), help="기본값: 오전 10시")
+        end_time = st.time_input("종료 시간", value=time(23, 59), help="기본값: 오후 11시 59분")
     
     # 카테고리 선택
     st.sidebar.markdown("### 🏷️ 분석할 카테고리")
@@ -791,7 +792,7 @@ def main():
             st.error("분석할 카테고리를 선택해주세요.")
             return
         
-        # 날짜 객체 생성 (KST 시간대로 변환)
+        # 날짜 객체 생성 (사용자가 설정한 시간 범위 사용)
         start_dt = datetime.combine(start_date, start_time).replace(tzinfo=KST)
         end_dt = datetime.combine(end_date, end_time).replace(tzinfo=KST)
         

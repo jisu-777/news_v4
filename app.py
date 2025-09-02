@@ -853,17 +853,7 @@ def main():
         help="분석할 카테고리를 선택하세요"
     )
     
-    # 선택된 카테고리의 검색 키워드 표시
-    if selected_categories:
-        st.sidebar.markdown("### 🔍 검색 키워드")
-        keywords_expander = st.sidebar.expander("키워드 상세보기", expanded=False)
-        with keywords_expander:
-            for category in selected_categories:
-                keywords = KEYWORD_CATEGORIES[category]
-                st.markdown(f"**{category}**:")
-                keyword_text = ", ".join(keywords)
-                st.info(keyword_text)
-                st.markdown("---")
+
     
     # Sector별 Prompt 표시
     st.sidebar.markdown("### 📝 Sector별 Prompt")
@@ -881,6 +871,21 @@ def main():
         - 단순 언급 수준 (인물 경력 소개, 한 문장 배경 소개)
         - 기사 주제와 직접 관련성이 없는 경우
         - 중복 보도, 광고성 콘텐츠, 외국어 기사
+        """)
+        
+        st.markdown("**경쟁사 카테고리 프롬프트:**")
+        st.markdown("""
+        **포함 조건:**
+        - 경쟁사 회계법인이 기사 주제일 때
+        - 경쟁사가 핵심 역할(자문·감정·보고서·매각주관 등)을 맡았을 때
+        - 경쟁사 보고서·코멘트·발표가 기사 논거의 중심일 때
+        - 경쟁사 자체 발표·행사·보도자료
+        
+        **제외 조건:**
+        - 단순 언급/경력 소개/배경 문장
+        - 스포츠 기사, 신제품 홍보/사회공헌/기부/ESG 기사
+        - 광고성/스폰서 기사, 시스템 오류/버그/장애 관련 단순 보도
+        - 목표주가/증권사 리포트 기사, 외국어 기사
         """)
         
         st.markdown("**일반 카테고리 프롬프트:**")

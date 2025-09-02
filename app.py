@@ -18,45 +18,7 @@ st.set_page_config(
 # 한국 시간대 설정
 KST = timezone(timedelta(hours=9))
 
-# 언론사 화이트리스트 정의
-WHITELIST = [
-    "chosun.com", "joongang.co.kr", "donga.com",
-    "biz.chosun.com", "magazine.hankyung.com", "hankyung.com",
-    "mk.co.kr", "yna.co.kr", "fnnews.com", "dailypharm.com",
-    "it.chosun.com", "itchosun.com", "mt.co.kr", "businesspost.co.kr",
-    "edaily.co.kr", "asiae.co.kr", "newspim.com", "newsis.com",
-    "heraldcorp.com", "thebell.co.kr",
-]
-
-def extract_host(url: str) -> str | None:
-    """URL에서 호스트 도메인을 추출하는 함수"""
-    if not url:
-        return None
-    try:
-        host = urlparse(url).netloc.lower()
-        # urlparse가 포트 포함할 수 있으므로 정리
-        return host.split(":")[0]
-    except Exception:
-        return None
-
-def is_allowed_domain(url: str) -> bool:
-    """URL이 화이트리스트에 포함된 도메인인지 확인하는 함수"""
-    host = extract_host(url)
-    if not host:
-        return False
-    # 서브도메인 포함 부분 일치 허용
-    return any(host == d or host.endswith("." + d) for d in WHITELIST)
-
-def filter_whitelisted(items: list[dict]) -> list[dict]:
-    """화이트리스트에 해당하는 언론사의 뉴스만 필터링하는 함수"""
-    filtered = []
-    for item in items:
-        # originallink가 있으면 그걸, 없으면 link를 사용 (네이버 API 응답용)
-        # AI 분석 결과는 url 필드를 사용
-        url = item.get("originallink") or item.get("link") or item.get("url")
-        if is_allowed_domain(url):
-            filtered.append(item)
-    return filtered
+# 화이트리스트 필터링 제거 - GPT가 언론사 신뢰도를 판단하도록 함
 
 # 커스텀 CSS
 st.markdown("""
@@ -118,6 +80,9 @@ st.markdown("""
 def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=7):
     """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집 - 2개 키워드씩 묶어서 검색"""
     all_news = []
+    # 중복 제거를 위한 set (URL과 제목 기준)
+    seen_urls = set()
+    seen_titles = set()
     
     # 네이버 API 키 확인
     client_id = NAVER_API_SETTINGS["client_id"]
@@ -174,15 +139,13 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             data = response.json()
             items = data.get('items', [])
             
-            # 사전 필터: 화이트리스트 언론사만 유지
-            items_pre = filter_whitelisted(items)
-            st.info(f"[Filter Pre] {query}: before={len(items)} after={len(items_pre)}")
+            st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집")
             
             news_count_per_keyword = {}
             for keyword in keywords:
                 news_count_per_keyword[keyword] = 0
             
-            for item in items_pre:
+            for item in items:
                 # 각 키워드별로 최대 개수 확인
                 if all(count >= max_per_keyword for count in news_count_per_keyword.values()):
                     break
@@ -216,19 +179,35 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                                 break
                     
                     if matched_keyword:
+                        # 중복 체크 (URL과 제목 기준)
+                        url = item.get('link', '')
+                        title_normalized = normalize_title_for_dedup(title)
+                        
+                        # URL이나 제목이 이미 존재하면 중복으로 간주
+                        if url in seen_urls or title_normalized in seen_titles:
+                            continue
+                        
                         news_item = {
                             'title': title,
-                            'url': item.get('link', ''),
+                            'url': url,
                             'date': pub_date.strftime('%Y-%m-%d'),
                             'summary': summary,
                             'keyword': matched_keyword
                         }
                         all_news.append(news_item)
                         news_count_per_keyword[matched_keyword] += 1
+                        
+                        # 중복 체크용 set에 추가
+                        seen_urls.add(url)
+                        seen_titles.add(title_normalized)
                     
         except Exception as e:
             st.warning(f"'{query if 'query' in locals() else keyword1}' 검색 중 오류: {str(e)}")
             continue
+    
+    # 중복 제거 통계 표시
+    total_processed = sum(len(KEYWORD_CATEGORIES.get(cat, [])) for cat in ['삼일PwC', '회계업계_일반', '주요기업', '산업동향', '경쟁사', 'M&A', '경제', '인사동정', '금융', '세제정책'])
+    st.info(f"[중복 제거 완료] 총 {len(all_news)}개 기사 수집 (중복 제거됨)")
     
     return all_news
 
@@ -252,6 +231,22 @@ def clean_html_entities(text):
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
     
     return clean_text
+
+def normalize_title_for_dedup(title):
+    """중복 제거를 위한 제목 정규화 함수"""
+    if not title:
+        return ""
+    
+    # 소문자 변환
+    normalized = title.lower().strip()
+    
+    # 특수문자 제거 (하이픈, 언더스코어, 점 등)
+    normalized = re.sub(r'[^\w\s가-힣]', '', normalized)
+    
+    # 연속된 공백을 하나로
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    
+    return normalized
 
 
 
@@ -314,6 +309,17 @@ def analyze_news_with_ai(news_list, category_name):
    - 광고성 콘텐츠: 스폰서 콘텐츠, 기사형 보도자료 (단, 삼일 자체 보도자료는 포함)
    - 외국어 기사: 한국어/영어를 제외한 해외 기사
    - 단순 언급만: 주요 주제에 직접 관련되지 않고 언급만 된 기사
+
+**언론사 신뢰도 판단 기준**
+다음 언론사들의 기사를 우선적으로 선별하세요:
+- 대형 언론사: 조선일보, 중앙일보, 동아일보, 한국경제, 매일경제, 연합뉴스
+- 전문 경제지: 이데일리, 아시아경제, 뉴스핌, 뉴시스, 헤럴드경제, 더벨
+- 전문 매체: 비즈니스포스트, 머니투데이, 한국경제TV
+
+신뢰도가 낮은 언론사 기사는 제외하세요:
+- 블로그, 개인 미디어, 소셜미디어
+- 광고성 콘텐츠, 스폰서 콘텐츠
+- 출처가 불분명한 기사
 
 **중복 제거 기준**
 우선순위 (상위가 우선)
@@ -410,6 +416,17 @@ def analyze_news_with_ai(news_list, category_name):
    - 지분 변동
    - 조직 개편
 
+**언론사 신뢰도 판단 기준**
+다음 언론사들의 기사를 우선적으로 선별하세요:
+- 대형 언론사: 조선일보, 중앙일보, 동아일보, 한국경제, 매일경제, 연합뉴스
+- 전문 경제지: 이데일리, 아시아경제, 뉴스핌, 뉴시스, 헤럴드경제, 더벨
+- 전문 매체: 비즈니스포스트, 머니투데이, 한국경제TV
+
+신뢰도가 낮은 언론사 기사는 제외하세요:
+- 블로그, 개인 미디어, 소셜미디어
+- 광고성 콘텐츠, 스폰서 콘텐츠
+- 출처가 불분명한 기사
+
 [응답 형식]
 선별된 뉴스를 다음과 같이 나열해주세요:
 
@@ -450,12 +467,9 @@ def analyze_news_with_ai(news_list, category_name):
         try:
             parsed_result = parse_ai_response(ai_response, news_list)
             
-            # 사후 필터: AI 선별 결과에도 화이트리스트 필터 재적용
+            # AI가 선별한 결과 그대로 사용 (화이트리스트 필터링 제거)
             if parsed_result.get("selected_news"):
-                ranked_post = filter_whitelisted(parsed_result["selected_news"])
-                st.info(f"[Filter Post] {category}: before={len(parsed_result['selected_news'])} after={len(ranked_post)}")
-                parsed_result["selected_news"] = ranked_post
-                parsed_result["selected_count"] = len(ranked_post)
+                st.info(f"[AI 선별 결과] {category_name}: {len(parsed_result['selected_news'])}개 기사 선별")
             
             return parsed_result
         except Exception as parse_error:

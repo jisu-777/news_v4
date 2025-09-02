@@ -394,6 +394,8 @@ def analyze_news_with_ai(news_list, category_name):
 - 컨소시엄 참여가 명확히 언급된 경우
 
 [제외(N)]
+- 삼일 회계법인을 단순히 언급만 할 때
+- 삼일과 관련히 전혀 없는 경우
 - 단순 언급/경력 소개/배경 문장
 - 스포츠(야구단·축구단·선수·감독·구단 등)
 - 신제품 홍보/사회공헌/기부/ESG 캠페인
@@ -943,11 +945,19 @@ def display_results(all_results, selected_categories):
                 # 테이블 형태로 표시
                 table_data = []
                 for news in selected_news:
-                    # UI용 테이블 데이터 (언론사, 날짜 포함)
+                    # 원본 뉴스에서 매칭하여 정확한 정보 가져오기
+                    original_news = None
+                    for original in result['collected_news']:
+                        if (news.get('title', '') in original.get('title', '') or 
+                            original.get('title', '') in news.get('title', '')):
+                            original_news = original
+                            break
+                    
+                    # UI용 테이블 데이터 (원본 정보 사용)
                     table_data.append({
                         "뉴스제목": news.get('title', '제목 없음'),
-                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
-                        "날짜": news.get('date', '날짜 없음'),
+                        "언론사": original_news.get('press', '언론사 정보 없음') if original_news else '언론사 정보 없음',
+                        "날짜": original_news.get('date', '날짜 없음') if original_news else '날짜 없음',
                         "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
                     })
                 

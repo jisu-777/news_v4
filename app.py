@@ -77,12 +77,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=7):
+def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=33):
     """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집 - 2개 키워드씩 묶어서 검색"""
     all_news = []
-    # 중복 제거를 위한 set (URL과 제목 기준)
-    seen_urls = set()
-    seen_titles = set()
     
     # 네이버 API 키 확인
     client_id = NAVER_API_SETTINGS["client_id"]
@@ -98,18 +95,23 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
         "X-Naver-Client-Secret": client_secret
     }
     
-    # 키워드를 2개씩 묶어서 처리
-    keyword_pairs = []
-    for i in range(0, len(category_keywords), 2):
-        if i + 1 < len(category_keywords):
-            keyword_pairs.append((category_keywords[i], category_keywords[i + 1]))
+    # 키워드를 3개씩 묶어서 처리
+    keyword_groups = []
+    for i in range(0, len(category_keywords), 3):
+        if i + 2 < len(category_keywords):
+            keyword_groups.append((category_keywords[i], category_keywords[i + 1], category_keywords[i + 2]))
+        elif i + 1 < len(category_keywords):
+            keyword_groups.append((category_keywords[i], category_keywords[i + 1], None))
         else:
-            keyword_pairs.append((category_keywords[i], None))
+            keyword_groups.append((category_keywords[i], None, None))
     
-    for keyword1, keyword2 in keyword_pairs:
+    for keyword1, keyword2, keyword3 in keyword_groups:
         try:
-            # 2개 키워드를 OR 조건으로 검색
-            if keyword2:
+            # 3개 키워드를 OR 조건으로 검색
+            if keyword3:
+                query = f"{keyword1} OR {keyword2} OR {keyword3}"
+                keywords = [keyword1, keyword2, keyword3]
+            elif keyword2:
                 query = f"{keyword1} OR {keyword2}"
                 keywords = [keyword1, keyword2]
             else:
@@ -119,7 +121,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             # 네이버 뉴스 API 호출
             params = {
                 "query": query,
-                "display": min(max_per_keyword * 2, 100),  # 2개 키워드이므로 2배로 요청
+                "display": min(max_per_keyword * 3, 100),  # 3개 키워드이므로 3배로 요청 (99개)
                 "start": 1,
                 "sort": NAVER_API_SETTINGS["sort"]
             }
@@ -179,35 +181,21 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                                 break
                     
                     if matched_keyword:
-                        # 중복 체크 (URL과 제목 기준)
-                        url = item.get('link', '')
-                        title_normalized = normalize_title_for_dedup(title)
-                        
-                        # URL이나 제목이 이미 존재하면 중복으로 간주
-                        if url in seen_urls or title_normalized in seen_titles:
-                            continue
-                        
                         news_item = {
                             'title': title,
-                            'url': url,
+                            'url': item.get('link', ''),
                             'date': pub_date.strftime('%Y-%m-%d'),
                             'summary': summary,
                             'keyword': matched_keyword
                         }
                         all_news.append(news_item)
                         news_count_per_keyword[matched_keyword] += 1
-                        
-                        # 중복 체크용 set에 추가
-                        seen_urls.add(url)
-                        seen_titles.add(title_normalized)
                     
         except Exception as e:
             st.warning(f"'{query if 'query' in locals() else keyword1}' 검색 중 오류: {str(e)}")
             continue
     
-    # 중복 제거 통계 표시
-    total_processed = sum(len(KEYWORD_CATEGORIES.get(cat, [])) for cat in ['삼일PwC', '회계업계_일반', '주요기업', '산업동향', '경쟁사', 'M&A', '경제', '인사동정', '금융', '세제정책'])
-    st.info(f"[중복 제거 완료] 총 {len(all_news)}개 기사 수집 (중복 제거됨)")
+    st.info(f"[수집 완료] 총 {len(all_news)}개 기사 수집")
     
     return all_news
 
@@ -232,21 +220,7 @@ def clean_html_entities(text):
     
     return clean_text
 
-def normalize_title_for_dedup(title):
-    """중복 제거를 위한 제목 정규화 함수"""
-    if not title:
-        return ""
-    
-    # 소문자 변환
-    normalized = title.lower().strip()
-    
-    # 특수문자 제거 (하이픈, 언더스코어, 점 등)
-    normalized = re.sub(r'[^\w\s가-힣]', '', normalized)
-    
-    # 연속된 공백을 하나로
-    normalized = re.sub(r'\s+', ' ', normalized).strip()
-    
-    return normalized
+
 
 
 
@@ -322,10 +296,24 @@ def analyze_news_with_ai(news_list, category_name):
 - 출처가 불분명한 기사
 
 **중복 제거 기준**
-우선순위 (상위가 우선)
-1. 매체 우선순위: 조선일보 > 중앙일보 > 동아일보 > 한국경제 > 매일경제 > 연합뉴스 등 대형·원문 보도 매체
-2. 기사 품질: 속보성, 제목 및 내용 명확성
-3. 시간 순서: 최초 보도 날짜
+다음 기준으로 중복 기사를 제거하세요:
+
+1. **동일 이슈 중복 보도**
+   - 같은 사건/이슈에 대한 여러 언론사 보도 중 가장 상세하고 신뢰할 수 있는 기사만 선택
+   - 우선순위: 조선일보 > 중앙일보 > 동아일보 > 한국경제 > 매일경제 > 연합뉴스 등 대형·원문 보도 매체
+
+2. **기사 품질 기준**
+   - 더 자세한 정보를 포함한 기사 우선
+   - 주요 인용문이나 전문가 의견이 포함된 기사 우선
+   - 단순 보도보다 분석적 내용이 포함된 기사 우선
+
+3. **시간 순서**
+   - 최초 보도나 가장 최신 정보를 담은 기사 우선
+
+4. **제목 유사성 판단**
+   - 제목이 거의 동일하거나 핵심 내용이 같은 경우 중복으로 간주
+   - 예: "삼일PwC 실적 발표" vs "삼일PwC, 2024년 실적 공개" → 중복
+   - 예: "삼일PwC 실적 발표" vs "삼일PwC 신규 사업 진출" → 중복 아님
 
 **경계 사례 판단 기준**
 - 명확한 포함 (Y): 컨소시엄 명단, 컨소시엄 역할, 통계·근거 인용 등
@@ -348,10 +336,13 @@ def analyze_news_with_ai(news_list, category_name):
 ...
 
 **중요**: 
-- 최소 5개 뉴스는 반드시 선별하고 반드시 5개 뉴스에 중복이 없어야합니다
+- **무조건 5개 이상의 뉴스를 반드시 선별해야 합니다.** 5개 미만으로 선별하면 안됩니다.
+- 가능하면 7-10개까지 선별하되, 최소 5개는 반드시 선별하세요.
+- 선별된 뉴스에 중복이 없어야 합니다.
 - 언론사명은 정확하게 표기해주세요.
 - 선별 이유는 간단명료하게 작성해주세요.
 - 삼일PwC 관련성이 명확한 뉴스를 우선적으로 선별하세요.
+- 만약 관련성이 높은 뉴스가 5개 미만이라면, 관련성이 낮은 뉴스라도 5개를 채워주세요.
 """
         else:
             # 다른 카테고리용 일반 프롬프트
@@ -427,6 +418,26 @@ def analyze_news_with_ai(news_list, category_name):
 - 광고성 콘텐츠, 스폰서 콘텐츠
 - 출처가 불분명한 기사
 
+**중복 제거 기준**
+다음 기준으로 중복 기사를 제거하세요:
+
+1. **동일 이슈 중복 보도**
+   - 같은 사건/이슈에 대한 여러 언론사 보도 중 가장 상세하고 신뢰할 수 있는 기사만 선택
+   - 우선순위: 조선일보 > 중앙일보 > 동아일보 > 한국경제 > 매일경제 > 연합뉴스 등 대형·원문 보도 매체
+
+2. **기사 품질 기준**
+   - 더 자세한 정보를 포함한 기사 우선
+   - 주요 인용문이나 전문가 의견이 포함된 기사 우선
+   - 단순 보도보다 분석적 내용이 포함된 기사 우선
+
+3. **시간 순서**
+   - 최초 보도나 가장 최신 정보를 담은 기사 우선
+
+4. **제목 유사성 판단**
+   - 제목이 거의 동일하거나 핵심 내용이 같은 경우 중복으로 간주
+   - 예: "삼성전자 실적 발표" vs "삼성전자, 2024년 실적 공개" → 중복
+   - 예: "삼성전자 실적 발표" vs "삼성전자 신규 사업 진출" → 중복 아님
+
 [응답 형식]
 선별된 뉴스를 다음과 같이 나열해주세요:
 
@@ -443,7 +454,9 @@ def analyze_news_with_ai(news_list, category_name):
 ...
 
 **중요**: 
-- 최소 5개 뉴스는 반드시 선별하고, 너무 엄격하게 선별하지 말고 비즈니스 관점에서 유용할 수 있는 정보라면 포함하세요.
+- **무조건 5개 이상의 뉴스를 반드시 선별해야 합니다.** 5개 미만으로 선별하면 안됩니다.
+- 가능하면 7-10개까지 선별하되, 최소 5개는 반드시 선별하세요.
+- 선별된 뉴스에 중복이 없어야 합니다.
 - 언론사명은 정확하게 표기해주세요.
 - 선별 이유는 간단명료하게 작성해주세요.
 """
@@ -702,7 +715,7 @@ def main():
                     category_keywords, 
                     start_dt, 
                     end_dt, 
-                    max_per_keyword=7
+                    max_per_keyword=33
                 )
             
             if not news_list:

@@ -636,8 +636,10 @@ def analyze_news_with_ai(news_list, category_name):
             # ✅ 폴백: AI가 0건 선별하면, 카테고리별로 자동으로 뽑는다.
             if (not parsed_result.get("selected_news")) and news_list:
                 # 카테고리별 폴백 개수 설정
-                if category_name in ["삼일PwC", "경쟁사"]:
-                    fallback_count = 2  # 삼일PwC, 경쟁사는 2건
+                if category_name == "삼일PwC":
+                    fallback_count = 1  # 삼일PwC는 1건
+                elif category_name == "경쟁사":
+                    fallback_count = 2  # 경쟁사는 2건
                 else:
                     fallback_count = 1  # 다른 카테고리는 1건
                 

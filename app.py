@@ -95,23 +95,34 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
         "X-Naver-Client-Secret": client_secret
     }
     
-    # 키워드를 2개씩 묶어서 처리
-    keyword_pairs = []
-    for i in range(0, len(category_keywords), 2):
-        if i + 1 < len(category_keywords):
-            keyword_pairs.append((category_keywords[i], category_keywords[i + 1]))
-        else:
-            keyword_pairs.append((category_keywords[i], None))
+    # 키워드 처리 방식 (카테고리별 다르게 적용)
+    if category_name in ["삼일PwC", "경쟁사"]:
+        # 삼일PwC, 경쟁사: 개별 키워드로 검색
+        keyword_pairs = [(keyword, None) for keyword in category_keywords]
+    else:
+        # 다른 카테고리: 2개씩 묶어서 OR 조건으로 검색
+        keyword_pairs = []
+        for i in range(0, len(category_keywords), 2):
+            if i + 1 < len(category_keywords):
+                keyword_pairs.append((category_keywords[i], category_keywords[i + 1]))
+            else:
+                keyword_pairs.append((category_keywords[i], None))
     
     for keyword1, keyword2 in keyword_pairs:
         try:
-            # 2개 키워드를 OR 조건으로 검색
-            if keyword2:
-                query = f"{keyword1} OR {keyword2}"
-                keywords = [keyword1, keyword2]
-            else:
+            # 검색 쿼리 생성 (카테고리별 다르게 적용)
+            if category_name in ["삼일PwC", "경쟁사"]:
+                # 삼일PwC, 경쟁사: 개별 키워드
                 query = keyword1
                 keywords = [keyword1]
+            else:
+                # 다른 카테고리: 2개 키워드를 OR 조건으로 검색
+                if keyword2:
+                    query = f"{keyword1} OR {keyword2}"
+                    keywords = [keyword1, keyword2]
+                else:
+                    query = keyword1
+                    keywords = [keyword1]
             
             # 페이지네이션을 통한 네이버 뉴스 API 호출
             all_items = []
@@ -202,13 +213,12 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
 
                 
                 # 날짜 및 시간 범위 확인 (카테고리별 다르게 적용)
-                if category_name == "삼일PwC":
-                    # 삼일PwC: 날짜 필터링 없음 (GPT가 판별)
-                    date_in_range = True
-                elif category_name == "경쟁사":
-                    # 경쟁사: 설정된 마지막 시간 기준 3일 전까지
-                    three_days_ago = end_dt - timedelta(days=3)
-                    date_in_range = pub_date >= three_days_ago
+                if category_name in ["삼일PwC", "경쟁사"]:
+                    # 삼일PwC, 경쟁사: 날짜만 비교 (시간 무시)
+                    pub_date_only = pub_date.date()
+                    start_date_only = start_dt.date()
+                    end_date_only = end_dt.date()
+                    date_in_range = start_date_only <= pub_date_only <= end_date_only
                 else:
                     # 다른 카테고리: 시간까지 비교
                     date_in_range = start_dt <= pub_date <= end_dt

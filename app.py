@@ -368,6 +368,16 @@ def analyze_news_with_ai(news_list, category_name):
     try:
         client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         
+        # 뉴스 목록을 텍스트로 변환
+        news_text = ""
+        for i, news in enumerate(news_list, 1):
+            news_text += f"{i}. 제목: {news.get('title', '제목 없음')}\n"
+            news_text += f"   요약: {news.get('summary', '요약 없음')}\n"
+            news_text += f"   링크: {news.get('url', '링크 없음')}\n"
+            news_text += f"   언론사: {news.get('press', '언론사 정보 없음')}\n"
+            news_text += f"   날짜: {news.get('date', '날짜 없음')}\n"
+            news_text += f"   검색키워드: {news.get('keyword', '키워드 없음')}\n\n"
+        
         # 카테고리별 프롬프트 설정
         if category_name == "삼일PwC":
             # 삼일PwC 전용 상세 프롬프트
@@ -467,6 +477,7 @@ def analyze_news_with_ai(news_list, category_name):
 
 **제외(N)**
 - 경기 관련 내용 (야구단, 축구단, KBO, 선수·감독 등)
+- 단순 행사 개최 뉴스 무조건 제외 무조건
 - 신제품 홍보, 사회공헌, ESG, 기부 기사
 - 단순 장애·버그·서비스 오류
 - 기술 성능·품질·테스트 홍보성 보도
@@ -482,7 +493,7 @@ def analyze_news_with_ai(news_list, category_name):
 
 **중요**
 - 무조건 1개 이상은 반드시 선별해야 함
-- 가능하면 7–10개까지 선별하되, 같은 이슈 중복은 금지
+- 가능하면 5–10개까지 선별하되, 같은 이슈 중복은 금지
 - 기사 내용도 중복되면 안 됨
 - 언론사명은 정확하게, 선별 이유는 간단명료하게 작성
 

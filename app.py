@@ -1,10 +1,11 @@
 import streamlit as st
 import requests
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, time
 import json
 import openai
 import os
 import re
+from urllib.parse import urlparse
 from config import KEYWORD_CATEGORIES, NAVER_API_SETTINGS
 
 # 페이지 설정
@@ -16,6 +17,46 @@ st.set_page_config(
 
 # 한국 시간대 설정
 KST = timezone(timedelta(hours=9))
+
+# 언론사 화이트리스트 정의
+WHITELIST = [
+    "chosun.com", "joongang.co.kr", "donga.com",
+    "biz.chosun.com", "magazine.hankyung.com", "hankyung.com",
+    "mk.co.kr", "yna.co.kr", "fnnews.com", "dailypharm.com",
+    "it.chosun.com", "itchosun.com", "mt.co.kr", "businesspost.co.kr",
+    "edaily.co.kr", "asiae.co.kr", "newspim.com", "newsis.com",
+    "heraldcorp.com", "thebell.co.kr",
+]
+
+def extract_host(url: str) -> str | None:
+    """URL에서 호스트 도메인을 추출하는 함수"""
+    if not url:
+        return None
+    try:
+        host = urlparse(url).netloc.lower()
+        # urlparse가 포트 포함할 수 있으므로 정리
+        return host.split(":")[0]
+    except Exception:
+        return None
+
+def is_allowed_domain(url: str) -> bool:
+    """URL이 화이트리스트에 포함된 도메인인지 확인하는 함수"""
+    host = extract_host(url)
+    if not host:
+        return False
+    # 서브도메인 포함 부분 일치 허용
+    return any(host == d or host.endswith("." + d) for d in WHITELIST)
+
+def filter_whitelisted(items: list[dict]) -> list[dict]:
+    """화이트리스트에 해당하는 언론사의 뉴스만 필터링하는 함수"""
+    filtered = []
+    for item in items:
+        # originallink가 있으면 그걸, 없으면 link를 사용 (네이버 API 응답용)
+        # AI 분석 결과는 url 필드를 사용
+        url = item.get("originallink") or item.get("link") or item.get("url")
+        if is_allowed_domain(url):
+            filtered.append(item)
+    return filtered
 
 # 커스텀 CSS
 st.markdown("""
@@ -74,8 +115,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def collect_news_from_naver_api(category_keywords, start_date, end_date, max_per_keyword=7):
-    """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집"""
+def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=7):
+    """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집 - 2개 키워드씩 묶어서 검색"""
     all_news = []
     
     # 네이버 API 키 확인
@@ -92,12 +133,28 @@ def collect_news_from_naver_api(category_keywords, start_date, end_date, max_per
         "X-Naver-Client-Secret": client_secret
     }
     
-    for keyword in category_keywords:
+    # 키워드를 2개씩 묶어서 처리
+    keyword_pairs = []
+    for i in range(0, len(category_keywords), 2):
+        if i + 1 < len(category_keywords):
+            keyword_pairs.append((category_keywords[i], category_keywords[i + 1]))
+        else:
+            keyword_pairs.append((category_keywords[i], None))
+    
+    for keyword1, keyword2 in keyword_pairs:
         try:
+            # 2개 키워드를 OR 조건으로 검색
+            if keyword2:
+                query = f"{keyword1} OR {keyword2}"
+                keywords = [keyword1, keyword2]
+            else:
+                query = keyword1
+                keywords = [keyword1]
+            
             # 네이버 뉴스 API 호출
             params = {
-                "query": keyword,
-                "display": min(max_per_keyword, 100),  # 최대 100개까지 요청 가능
+                "query": query,
+                "display": min(max_per_keyword * 2, 100),  # 2개 키워드이므로 2배로 요청
                 "start": 1,
                 "sort": NAVER_API_SETTINGS["sort"]
             }
@@ -110,50 +167,67 @@ def collect_news_from_naver_api(category_keywords, start_date, end_date, max_per
             )
             
             if response.status_code != 200:
-                st.warning(f"'{keyword}' 검색 중 API 오류: {response.status_code}")
+                st.warning(f"'{query}' 검색 중 API 오류: {response.status_code}")
                 continue
             
             # JSON 응답 파싱
             data = response.json()
             items = data.get('items', [])
             
-            news_count = 0
-            for item in items:
-                if news_count >= max_per_keyword:
+            # 사전 필터: 화이트리스트 언론사만 유지
+            items_pre = filter_whitelisted(items)
+            st.info(f"[Filter Pre] {query}: before={len(items)} after={len(items_pre)}")
+            
+            news_count_per_keyword = {}
+            for keyword in keywords:
+                news_count_per_keyword[keyword] = 0
+            
+            for item in items_pre:
+                # 각 키워드별로 최대 개수 확인
+                if all(count >= max_per_keyword for count in news_count_per_keyword.values()):
                     break
                 
-                # 날짜 파싱 (네이버 API는 ISO 8601 형식)
+                # 날짜 파싱 (네이버 API는 RFC 822 형식)
                 try:
-                    # 네이버 API 날짜 형식: "Wed, 15 Jan 2025 10:30:00 +0900"
                     date_str = item.get('pubDate', '')
                     if date_str:
-                        # 간단한 날짜 파싱 (더 정확한 파싱이 필요할 수 있음)
-                        pub_date = datetime.now()  # 기본값
-                        # 실제 구현에서는 더 정교한 날짜 파싱 필요
+                        # RFC 822 형식 파싱: "Wed, 15 Jan 2025 10:30:00 +0900"
+                        from email.utils import parsedate_to_datetime
+                        pub_date = parsedate_to_datetime(date_str)
+                        # 한국 시간대로 변환
+                        pub_date = pub_date.replace(tzinfo=timezone.utc).astimezone(KST)
                     else:
-                        pub_date = datetime.now()
-                except:
-                    pub_date = datetime.now()
+                        pub_date = datetime.now(KST)
+                except Exception as date_error:
+                    # 날짜 파싱 실패 시 현재 시간 사용
+                    pub_date = datetime.now(KST)
                 
-                # 날짜 범위 확인
-                if start_date <= pub_date <= end_date:
-                    # 언론사 정보 추출
-                    press_info = extract_press_from_title(item.get('title', ''))
+                # 날짜 및 시간 범위 확인
+                if start_dt <= pub_date <= end_dt:
+                    # 어떤 키워드와 매칭되는지 확인
+                    title = clean_html_entities(item.get('title', ''))
+                    summary = clean_html_entities(item.get('description', ''))
                     
-                    news_item = {
-                        'title': clean_html_entities(item.get('title', '')),
-                        'url': item.get('link', ''),
-                        'date': pub_date.strftime('%Y-%m-%d'),
-                        'summary': clean_html_entities(item.get('description', '')),
-                        'keyword': keyword,
-                        'raw_press': press_info,
-                        'extracted_press': press_info.get('extracted_press', '')
-                    }
-                    all_news.append(news_item)
-                    news_count += 1
+                    matched_keyword = None
+                    for keyword in keywords:
+                        if keyword in title or keyword in summary:
+                            if news_count_per_keyword[keyword] < max_per_keyword:
+                                matched_keyword = keyword
+                                break
+                    
+                    if matched_keyword:
+                        news_item = {
+                            'title': title,
+                            'url': item.get('link', ''),
+                            'date': pub_date.strftime('%Y-%m-%d'),
+                            'summary': summary,
+                            'keyword': matched_keyword
+                        }
+                        all_news.append(news_item)
+                        news_count_per_keyword[matched_keyword] += 1
                     
         except Exception as e:
-            st.warning(f"'{keyword}' 검색 중 오류: {str(e)}")
+            st.warning(f"'{query if 'query' in locals() else keyword1}' 검색 중 오류: {str(e)}")
             continue
     
     return all_news
@@ -179,72 +253,7 @@ def clean_html_entities(text):
     
     return clean_text
 
-def extract_press_from_title(title):
-    """뉴스 제목에서 언론사명 추출 - 개선된 버전"""
-    if not title:
-        return {
-            'clean_title': '',
-            'extracted_press': '',
-            'original_title': ''
-        }
-    
-    # 다양한 언론사 표기 패턴
-    press_patterns = [
-        # "제목 - 언론사명" 패턴 (가장 일반적)
-        r'\s*[-–—]\s*([가-힣A-Za-z0-9\s&]+)$',
-        # "제목 [언론사명]" 패턴
-        r'\s*\[([가-힣A-Za-z0-9\s&]+)\]\s*$',
-        # "제목 (언론사명)" 패턴
-        r'\s*\(([가-힣A-Za-z0-9\s&]+)\)\s*$',
-        # "제목 | 언론사명" 패턴
-        r'\s*\|\s*([가-힣A-Za-z0-9\s&]+)$',
-        # "제목 / 언론사명" 패턴
-        r'\s*/\s*([가-힣A-Za-z0-9\s&]+)$',
-        # "제목 : 언론사명" 패턴
-        r'\s*:\s*([가-힣A-Za-z0-9\s&]+)$',
-    ]
-    
-    clean_title = title
-    extracted_press = ""
-    
-    for pattern in press_patterns:
-        match = re.search(pattern, title)
-        if match:
-            # 그룹이 있는 경우 첫 번째 그룹 사용, 없는 경우 전체 매치 사용
-            press_text = match.group(1) if len(match.groups()) > 0 else match.group(0)
-            extracted_press = press_text.strip()
-            
-            # 제목에서 언론사 부분 제거
-            clean_title = re.sub(pattern, '', title).strip()
-            
-            # 추출된 언론사가 너무 길거나 의미없는 경우 필터링
-            if len(extracted_press) > 20 or extracted_press.lower() in ['뉴스', '기사', '보도']:
-                extracted_press = ""
-                clean_title = title  # 원본 제목 유지
-            else:
-                break
-    
-    # 언론사가 추출되지 않은 경우 추가 시도
-    if not extracted_press:
-        # 제목 끝에 있는 일반적인 언론사명 패턴 확인
-        common_press = [
-            '연합뉴스', '뉴시스', '매일경제', '한국경제', '서울경제', '이데일리',
-            '머니투데이', '아시아경제', '파이낸셜뉴스', '헤럴드경제', '경향신문',
-            '조선일보', '중앙일보', '동아일보', '한겨레', '한국일보', '국민일보',
-            '세계일보', '문화일보', '서울신문', '경기일보', '부산일보', '대구일보'
-        ]
-        
-        for press in common_press:
-            if press in title:
-                extracted_press = press
-                clean_title = title.replace(press, '').strip()
-                break
-    
-    return {
-        'clean_title': clean_title,
-        'extracted_press': extracted_press,
-        'original_title': title
-    }
+
 
 def analyze_news_with_ai(news_list, category_name):
     """AI를 사용하여 뉴스 분석 및 언론사 판별 - 카테고리별 프롬프트 적용"""
@@ -321,19 +330,19 @@ def analyze_news_with_ai(news_list, category_name):
 선별된 뉴스를 다음과 같이 나열해주세요:
 
 1. [뉴스 제목]
-   언론사: [언론사명]
+   
    선별 이유: [간단한 선별 이유]
    링크: [뉴스 URL]
 
 2. [뉴스 제목]
-   언론사: [언론사명]
+   
    선별 이유: [간단한 선별 이유]
    링크: [뉴스 URL]
 
 ...
 
 **중요**: 
-- 최소 3개 뉴스는 반드시 선별하고, 너무 엄격하게 선별하지 말고 비즈니스 관점에서 유용할 수 있는 정보라면 포함하세요.
+- 최소 5개 뉴스는 반드시 선별하고 반드시 5개 뉴스에 중복이 없어야합니다
 - 언론사명은 정확하게 표기해주세요.
 - 선별 이유는 간단명료하게 작성해주세요.
 - 삼일PwC 관련성이 명확한 뉴스를 우선적으로 선별하세요.
@@ -405,12 +414,12 @@ def analyze_news_with_ai(news_list, category_name):
 선별된 뉴스를 다음과 같이 나열해주세요:
 
 1. [뉴스 제목]
-   언론사: [언론사명]
+  
    선별 이유: [간단한 선별 이유]
    링크: [뉴스 URL]
 
 2. [뉴스 제목]
-   언론사: [언론사명]
+  
    선별 이유: [간단한 선별 이유]
    링크: [뉴스 URL]
 
@@ -440,6 +449,14 @@ def analyze_news_with_ai(news_list, category_name):
         # AI 응답을 파싱하여 구조화된 데이터로 변환
         try:
             parsed_result = parse_ai_response(ai_response, news_list)
+            
+            # 사후 필터: AI 선별 결과에도 화이트리스트 필터 재적용
+            if parsed_result.get("selected_news"):
+                ranked_post = filter_whitelisted(parsed_result["selected_news"])
+                st.info(f"[Filter Post] {category}: before={len(parsed_result['selected_news'])} after={len(ranked_post)}")
+                parsed_result["selected_news"] = ranked_post
+                parsed_result["selected_count"] = len(ranked_post)
+            
             return parsed_result
         except Exception as parse_error:
             st.warning(f"AI 응답 파싱 중 오류: {str(parse_error)}")
@@ -510,6 +527,8 @@ def parse_ai_response(ai_response, news_list):
                     current_news['date'] = news['date']
                     if 'url' not in current_news:
                         current_news['url'] = news['url']
+                    # 원본 뉴스의 키워드 정보 저장
+                    current_news['keyword'] = news.get('keyword', '')
                     # 원본 뉴스의 언론사 정보도 활용
                     if 'press_analysis' not in current_news and news.get('raw_press', {}).get('extracted_press'):
                         current_news['press_analysis'] = news['raw_press']['extracted_press']
@@ -524,25 +543,18 @@ def parse_ai_response(ai_response, news_list):
         if 'importance' not in news:
             news['importance'] = '보통'
         
-        # 언론사 정보가 없는 경우 원본 뉴스에서 찾기
+        # 언론사 정보가 없는 경우 기본값 설정
         if 'press_analysis' not in news or not news['press_analysis']:
-            for original_news in news_list:
-                if (news['title'] in original_news['title'] or 
-                    original_news['title'] in news['title']):
-                    extracted_press = original_news.get('raw_press', {}).get('extracted_press', '')
-                    if extracted_press:
-                        news['press_analysis'] = extracted_press
-                    else:
-                        news['press_analysis'] = '언론사 정보 없음'
-                    break
-            else:
-                news['press_analysis'] = '언론사 정보 없음'
+            news['press_analysis'] = '언론사 정보 없음'
         
         if 'selection_reason' not in news:
             news['selection_reason'] = 'AI가 선별한 뉴스'
         
         if 'date' not in news:
             news['date'] = '날짜 정보 없음'
+        
+        if 'keyword' not in news:
+            news['keyword'] = '키워드 정보 없음'
     
     return {
         "selected_news": selected_news,
@@ -558,8 +570,8 @@ def main():
     # 사이드바 설정
     st.sidebar.title("🔍 설정")
     
-    # 날짜 필터
-    st.sidebar.markdown("### 📅 날짜 범위")
+    # 날짜 및 시간 필터
+    st.sidebar.markdown("### 📅 날짜 및 시간 범위")
     now = datetime.now()
     default_start = now - timedelta(days=1)
     
@@ -568,6 +580,14 @@ def main():
         start_date = st.date_input("시작일", value=default_start.date())
     with col2:
         end_date = st.date_input("종료일", value=now.date())
+    
+    # 시간 선택 추가
+    st.sidebar.markdown("#### ⏰ 시간 범위")
+    col3, col4 = st.sidebar.columns(2)
+    with col3:
+        start_time = st.time_input("시작 시간", value=time(10, 0), help="기본값: 오전 10시")
+    with col4:
+        end_time = st.time_input("종료 시간", value=time(10, 0), help="기본값: 오전 10시")
     
     # 카테고리 선택
     st.sidebar.markdown("### 🏷️ 분석할 카테고리")
@@ -578,14 +598,64 @@ def main():
         help="분석할 카테고리를 선택하세요"
     )
     
+    # 선택된 카테고리의 검색 키워드 표시
+    if selected_categories:
+        st.sidebar.markdown("### 🔍 검색 키워드")
+        keywords_expander = st.sidebar.expander("키워드 상세보기", expanded=False)
+        with keywords_expander:
+            for category in selected_categories:
+                keywords = KEYWORD_CATEGORIES[category]
+                st.markdown(f"**{category}**:")
+                keyword_text = ", ".join(keywords)
+                st.info(keyword_text)
+                st.markdown("---")
+    
+    # Sector별 Prompt 표시
+    st.sidebar.markdown("### 📝 Sector별 Prompt")
+    prompt_expander = st.sidebar.expander("프롬프트 보기", expanded=False)
+    with prompt_expander:
+        st.markdown("**삼일PwC 카테고리 프롬프트:**")
+        st.markdown("""
+        **포함 조건:**
+        - 삼일회계법인/삼일PwC/PwC 자체가 기사의 주제인 경우
+        - 삼일이 해당 사건에서 주된 역할을 맡은 경우
+        - 삼일PwC가 주요 근거나 핵심 소스로 활용된 경우
+        - 컨소시엄 참여 관련 (역할 명시, 단순 명단 포함)
+        
+        **제외 조건:**
+        - 단순 언급 수준 (인물 경력 소개, 한 문장 배경 소개)
+        - 기사 주제와 직접 관련성이 없는 경우
+        - 중복 보도, 광고성 콘텐츠, 외국어 기사
+        """)
+        
+        st.markdown("**일반 카테고리 프롬프트:**")
+        st.markdown("""
+        **최우선 순위:**
+        - 재무/실적 정보 (매출, 영업이익, 순이익, 배당 정책)
+        - 회계/감사 관련 (회계처리 변경, 감사의견, 내부회계관리제도)
+        
+        **높은 우선순위:**
+        - 구조적 기업가치 변동 (신규사업, 투자, 전략 방향성)
+        - 기업구조 변경 (M&A, 자회사 설립/매각, 지분 변동)
+        
+        **제외 조건:**
+        - 경기 관련 내용 (스포츠단, 야구단, 축구단 등)
+        - 신제품 홍보, 사회공헌, ESG, 기부 등
+        - 단순 시스템 장애, 버그, 서비스 오류
+        - 기술 성능, 품질, 테스트 관련 보도
+        - 목표가 관련 보도
+        """)
+    
     # 선택 요약 표시
     if selected_categories:
         st.sidebar.markdown("### 📋 선택 요약")
         st.sidebar.info(f"**날짜**: {start_date} ~ {end_date}")
+        st.sidebar.info(f"**시간**: {start_time.strftime('%H:%M')} ~ {end_time.strftime('%H:%M')}")
         st.sidebar.info(f"**카테고리**: {len(selected_categories)}개 선택")
         
         # 선택된 카테고리의 총 키워드 수 계산
         total_keywords = sum(len(KEYWORD_CATEGORIES[cat]) for cat in selected_categories)
+        st.sidebar.info(f"**총 키워드 수**: {total_keywords}개")
         
     
     # 메인 컨텐츠
@@ -594,9 +664,9 @@ def main():
             st.error("분석할 카테고리를 선택해주세요.")
             return
         
-        # 날짜 객체 생성
-        start_dt = datetime.combine(start_date, datetime.min.time())
-        end_dt = datetime.combine(end_date, datetime.max.time())
+        # 날짜 객체 생성 (KST 시간대로 변환)
+        start_dt = datetime.combine(start_date, start_time).replace(tzinfo=KST)
+        end_dt = datetime.combine(end_date, end_time).replace(tzinfo=KST)
         
         # 진행 상황 표시
         progress_bar = st.progress(0)
@@ -630,7 +700,7 @@ def main():
                 analysis_result = analyze_news_with_ai(news_list, category)
             
             all_results[category] = {
-                'collected_news': news_list,
+                'collected_news': news_list, # 원본 뉴스 목록
                 'analysis_result': analysis_result
             }
         
@@ -652,6 +722,9 @@ def main():
 def display_results(all_results, selected_categories):
     """분석 결과 표시"""
     st.markdown("## 📊 분석 결과")
+    
+    # 전체 결과를 저장할 리스트 (엑셀 다운로드용)
+    all_excel_data = []
     
     for category in selected_categories:
         if category not in all_results:
@@ -676,31 +749,57 @@ def display_results(all_results, selected_categories):
                 # 테이블 형태로 표시
                 table_data = []
                 for news in selected_news:
-                    # 원본 뉴스에서 언론사 정보 확인
-                    original_press = ""
-                    for original_news in result['collected_news']:
-                        if (news.get('title', '') in original_news.get('title', '') or 
-                            original_news.get('title', '') in news.get('title', '')):
-                            original_press = original_news.get('extracted_press', '')
-                            break
-                    
-                    # AI 분석 결과와 원본 언론사 정보 비교
-                    ai_press = news.get('press_analysis', '언론사 정보 없음')
-                    final_press = ai_press if ai_press and ai_press != '언론사 정보 없음' else original_press
-                    
+                    # UI용 테이블 데이터 (선별이유와 키워드 제외)
                     table_data.append({
                         "카테고리": category,
                         "뉴스제목": news.get('title', '제목 없음'),
-                        "언론사": final_press or '언론사 정보 없음',
+                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
                         "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
                     })
+                    
+                    # 엑셀용 데이터 (선별이유와 키워드 포함)
+                    excel_data = {
+                        "카테고리": category,
+                        "뉴스제목": news.get('title', '제목 없음'),
+                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
+                        "링크": news.get('url', ''),
+                        "선별이유": news.get('selection_reason', ''),
+                        "검색키워드": news.get('keyword', '')
+                    }
+                    all_excel_data.append(excel_data)
                 
                 # Streamlit 테이블로 표시
                 st.table(table_data)
             else:
                 st.info("AI 분석 결과 해당 카테고리에서 선별할 만한 뉴스가 없습니다.")
     
-    # 전체 요약 섹션 제거
+    # 엑셀 다운로드 버튼 (결과가 있을 때만 표시)
+    if all_excel_data:
+        st.markdown("---")
+        st.markdown("### 📥 엑셀 다운로드")
+        
+        # pandas DataFrame 생성
+        import pandas as pd
+        df = pd.DataFrame(all_excel_data)
+        
+        # 엑셀 파일 생성
+        from io import BytesIO
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='뉴스분석결과', index=False)
+        
+        # 파일명 생성 (현재 날짜 포함)
+        from datetime import datetime
+        filename = f"PwC_뉴스분석_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        # 다운로드 버튼
+        st.download_button(
+            label="📊 엑셀 파일 다운로드",
+            data=output.getvalue(),
+            file_name=filename,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            help="선별이유와 검색키워드가 포함된 상세 분석 결과를 엑셀 파일로 다운로드합니다."
+        )
 
 if __name__ == "__main__":
     main()

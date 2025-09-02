@@ -485,10 +485,11 @@ def analyze_news_with_ai(news_list, category_name):
 - **무조건 5개 이상의 뉴스를 반드시 선별해야 합니다.** 5개 미만으로 선별하면 안됩니다.
 - 가능하면 7-10개까지 선별하되, 최소 5개는 반드시 선별하세요.
 - 선별된 뉴스에 중복이 없어야 합니다.
+- 내용도 반드시 중복되면 안됩니다.
 - 언론사명은 정확하게 표기해주세요.
 - 선별 이유는 간단명료하게 작성해주세요.
 - 삼일PwC 관련성이 명확한 뉴스를 우선적으로 선별하세요.
-- 만약 관련성이 높은 뉴스가 5개 미만이라면, 관련성이 낮은 뉴스라도 5개를 채워주세요.
+
 """
         else:
             # 다른 카테고리용 일반 프롬프트
@@ -603,6 +604,7 @@ def analyze_news_with_ai(news_list, category_name):
 - **무조건 5개 이상의 뉴스를 반드시 선별해야 합니다.** 5개 미만으로 선별하면 안됩니다.
 - 가능하면 7-10개까지 선별하되, 최소 5개는 반드시 선별하세요.
 - 선별된 뉴스에 중복이 없어야 합니다.
+- 내용도 반드시 중복되면 안됩니다.
 - 언론사명은 정확하게 표기해주세요.
 - 선별 이유는 간단명료하게 작성해주세요.
 """
@@ -702,9 +704,14 @@ def parse_ai_response(ai_response, news_list):
                         current_news['url'] = news['url']
                     # 원본 뉴스의 키워드 정보 저장
                     current_news['keyword'] = news.get('keyword', '')
-                    # 원본 뉴스의 언론사 정보 활용
-                    if 'press_analysis' not in current_news:
-                        current_news['press_analysis'] = news.get('press', '언론사 정보 없음')
+                    # 언론사 정보 우선순위: 우리 매핑 > AI 추출
+                    original_press = news.get('press', '')
+                    if original_press and original_press != '언론사 정보 없음':
+                        # 우리가 매핑한 언론사명이 있으면 우선 사용
+                        current_news['press_analysis'] = original_press
+                    elif 'press_analysis' not in current_news:
+                        # AI가 추출한 언론사명이 없으면 기본값
+                        current_news['press_analysis'] = '언론사 정보 없음'
                     break
     
     # 마지막 뉴스 추가

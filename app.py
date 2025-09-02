@@ -18,7 +18,17 @@ st.set_page_config(
 # 한국 시간대 설정
 KST = timezone(timedelta(hours=9))
 
-# 화이트리스트 필터링 제거 - GPT가 언론사 신뢰도를 판단하도록 함
+# 유효언론사 목록 정의 (삼일PwC, 경쟁사 제외한 카테고리에서 사용)
+VALID_PRESS = {
+    # 대형 언론사 (최우선)
+    "조선일보": 1, "중앙일보": 2, "동아일보": 3,
+    "한국경제": 4, "매일경제": 5, "연합뉴스": 6,
+    # 전문 경제지 (우선)
+    "이데일리": 7, "아시아경제": 8, "뉴스핌": 9, "뉴시스": 10,
+    "헤럴드경제": 11, "더벨": 12, "비즈니스포스트": 13, "머니투데이": 14,
+    # 기타 유효언론사
+    "KBS": 15, "경향신문": 16, "노컷뉴스": 17, "데일리안": 18, "뉴스1": 19, "매경이코노미": 20
+}
 
 # 커스텀 CSS
 st.markdown("""
@@ -368,6 +378,19 @@ def analyze_news_with_ai(news_list, category_name):
     try:
         client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
         
+        # 삼일PwC, 경쟁사가 아닌 카테고리는 유효언론사만 필터링
+        if category_name not in ["삼일PwC", "경쟁사"]:
+            filtered_news_list = [news for news in news_list if news.get('press', '') in VALID_PRESS]
+            if not filtered_news_list:
+                st.warning(f"{category_name} 카테고리에서 유효언론사 기사가 없습니다.")
+                return {
+                    "selected_news": [],
+                    "total_analyzed": len(news_list),
+                    "selected_count": 0,
+                    "error": "유효언론사 기사 없음"
+                }
+            news_list = filtered_news_list  # 필터링된 목록으로 교체
+        
         # 뉴스 목록을 텍스트로 변환
         news_text = ""
         for i, news in enumerate(news_list, 1):
@@ -481,11 +504,9 @@ def analyze_news_with_ai(news_list, category_name):
 ...
 """
         else:
-            # 다른 카테고리용 일반 프롬프트
+            # 다른 카테고리용 일반 프롬프트 (유효언론사는 이미 필터링됨)
             analysis_prompt = f"""
-다음은 '{category_name}' 카테고리로 수집된 뉴스 목록입니다.
-
-
+다음은 '{category_name}' 카테고리로 수집된 뉴스 목록입니다. (유효언론사만 포함)
 
 [선별 기준]
 - 재무/실적 정보 (매출, 영업이익, 순이익, 투자계획)
@@ -493,13 +514,11 @@ def analyze_news_with_ai(news_list, category_name):
 - 비즈니스 중요도 (신규사업, M&A, 조직변화, 경영진 인사)
 - 산업 동향 (정책, 규제, 시장 변화)
 
-"다음 조건 중 하나라도 해당하는 뉴스는 제외하세요:
+다음 조건 중 하나라도 해당하는 뉴스는 제외하세요:
 
 1. 경기 관련 내용
    - 스포츠단 관련 내용
    - 키워드: 야구단, 축구단, 구단, KBO, 프로야구, 감독, 선수
-
-
 
 2. 신제품 홍보, 사회공헌, ESG, 기부 등
    - 키워드: 출시, 기부, 환경 캠페인, 브랜드 홍보, 사회공헌, 나눔, 캠페인 진행, 소비자 반응
@@ -512,12 +531,6 @@ def analyze_news_with_ai(news_list, category_name):
    
 5. 목표가 관련 보도
    - 키워드: 목표가, 목표주가 달성, 목표주가 도달, 목표주가 향상, 목표가↑, 목표가
-
-    기사 내용의 완성도
-   - 더 자세한 정보를 포함한 기사 우선
-   - 주요 인용문이나 전문가 의견이 포함된 기사 우선
-   - 단순 보도보다 분석적 내용이 포함된 기사 우선
-
 
 6. 학생 정책 관련한 기사
 7. 교육 정책 관련한 기사
@@ -551,11 +564,11 @@ def analyze_news_with_ai(news_list, category_name):
    - 지분 변동
    - 조직 개편
 
-**언론사 신뢰도 판단 기준**
-다음 언론사들의 기사를 우선적으로 선별하세요:
-- 대형 언론사: 조선일보, 중앙일보, 동아일보, 한국경제, 매일경제, 연합뉴스
-- 전문 경제지: 이데일리, 아시아경제, 뉴스핌, 뉴시스, 헤럴드경제, 더벨
-- 전문 매체: 비즈니스포스트, 머니투데이, 한국경제TV
+**언론사 우선순위**
+다음 순서로 우선선별하세요:
+1. 대형 언론사: 조선일보 > 중앙일보 > 동아일보 > 한국경제 > 매일경제 > 연합뉴스
+2. 전문 경제지: 이데일리 > 아시아경제 > 뉴스핌 > 뉴시스 > 헤럴드경제 > 더벨 > 비즈니스포스트 > 머니투데이
+3. 기타 언론사: KBS > 경향신문 > 노컷뉴스 > 데일리안 > 뉴스1 > 매경이코노미
 
 **중복 제거 기준**
 다음 기준으로 중복 기사를 제거하세요:
@@ -620,35 +633,73 @@ def analyze_news_with_ai(news_list, category_name):
         try:
             parsed_result = parse_ai_response(ai_response, news_list)
             
-            # ✅ 폴백: AI가 0건 선별하면, 우리가 1건은 자동으로 뽑는다.
+            # ✅ 폴백: AI가 0건 선별하면, 카테고리별로 자동으로 뽑는다.
             if (not parsed_result.get("selected_news")) and news_list:
-                # 1) 언론사 신뢰도 우선순위
-                press_rank = {
-                    "조선일보": 1, "중앙일보": 2, "동아일보": 3,
-                    "한국경제": 4, "매일경제": 5, "연합뉴스": 6,
-                    "이데일리": 7, "아시아경제": 8, "뉴스핌": 9, "뉴시스": 10,
-                    "헤럴드경제": 11, "더벨": 12, "비즈니스포스트": 13, "머니투데이": 14
-                }
+                # 카테고리별 폴백 개수 설정
+                if category_name in ["삼일PwC", "경쟁사"]:
+                    fallback_count = 2  # 삼일PwC, 경쟁사는 2건
+                else:
+                    fallback_count = 1  # 다른 카테고리는 1건
+                
+                # 유효언론사 목록 정의 (삼일PwC, 경쟁사는 전체 언론사 사용)
+                if category_name in ["삼일PwC", "경쟁사"]:
+                    valid_press = VALID_PRESS.copy()
+                    # 삼일PwC, 경쟁사는 모든 언론사 허용 (유효언론사 우선순위만 적용)
+                    all_press_rank = {**valid_press}
+                    # 유효언론사가 아닌 언론사들도 포함 (낮은 우선순위)
+                    for press in set(n.get("press", "") for n in news_list):
+                        if press not in all_press_rank:
+                            all_press_rank[press] = 999
+                    valid_press = all_press_rank
+                else:
+                    valid_press = VALID_PRESS
+                
                 def score(n):
                     p = n.get("press", "")
-                    return (press_rank.get(p, 100),  # 언론사 점수 낮을수록 우선
+                    # 유효언론사가 아니면 최하위 점수 부여 (삼일PwC, 경쟁사 제외)
+                    if category_name not in ["삼일PwC", "경쟁사"] and p not in valid_press:
+                        return (999, n.get("date", "0000-00-00"))
+                    return (valid_press.get(p, 999),  # 언론사 점수 낮을수록 우선
                             n.get("date", "0000-00-00"))  # 날짜 최신 우선(문자열 비교 OK: YYYY-MM-DD)
 
-                # 2) 정렬 후 최상위 1건
-                best = sorted(news_list, key=score)[0]
+                # 2) 필터링 후 정렬
+                if category_name in ["삼일PwC", "경쟁사"]:
+                    # 삼일PwC, 경쟁사는 전체 뉴스에서 선택
+                    filtered_news = news_list
+                else:
+                    # 다른 카테고리는 유효언론사만 필터링
+                    filtered_news = [n for n in news_list if n.get("press", "") in VALID_PRESS]
+                
+                if filtered_news:
+                    # 상위 N건 선택
+                    best_news = sorted(filtered_news, key=score)[:fallback_count]
+                else:
+                    # 필터링된 뉴스가 없으면 전체에서 최상위 선택
+                    best_news = sorted(news_list, key=lambda x: (999, x.get("date", "0000-00-00")))[:fallback_count]
 
-                parsed_result = {
-                    "selected_news": [{
-                        "title": best.get("title", "제목 없음"),
-                        "url": best.get("url", ""),
-                        "date": best.get("date", ""),
-                        "keyword": best.get("keyword", ""),
-                        "press_analysis": best.get("press", "언론사 정보 없음"),
-                        "selection_reason": "AI 무선별 → 폴백(언론사/최신성 기준 자동선택)",
+                # 선택된 뉴스들을 결과에 추가
+                selected_news_list = []
+                for i, news in enumerate(best_news):
+                    is_valid_press = news.get("press", "") in VALID_PRESS
+                    if category_name in ["삼일PwC", "경쟁사"]:
+                        fallback_reason = f"AI 무선별 → 폴백(전체언론사/최신성 기준 자동선택 {i+1}/{fallback_count})"
+                    else:
+                        fallback_reason = f"AI 무선별 → 폴백(유효언론사/최신성 기준 자동선택 {i+1}/{fallback_count})" if is_valid_press else f"AI 무선별 → 폴백(전체언론사/최신성 기준 자동선택 {i+1}/{fallback_count})"
+                    
+                    selected_news_list.append({
+                        "title": news.get("title", "제목 없음"),
+                        "url": news.get("url", ""),
+                        "date": news.get("date", ""),
+                        "keyword": news.get("keyword", ""),
+                        "press_analysis": news.get("press", "언론사 정보 없음"),
+                        "selection_reason": fallback_reason,
                         "importance": "보통",
-                    }],
+                    })
+                
+                parsed_result = {
+                    "selected_news": selected_news_list,
                     "total_analyzed": len(news_list),
-                    "selected_count": 1
+                    "selected_count": len(selected_news_list)
                 }
             
             # AI 분석 후 필터링 정보 표시

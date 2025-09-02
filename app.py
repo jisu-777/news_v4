@@ -177,16 +177,30 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                         # RFC 822 형식 파싱: "Wed, 15 Jan 2025 10:30:00 +0900"
                         from email.utils import parsedate_to_datetime
                         pub_date = parsedate_to_datetime(date_str)
-                        # 한국 시간대로 변환
-                        pub_date = pub_date.replace(tzinfo=timezone.utc).astimezone(KST)
+                        
+                        # ✅ tz-aware면 그대로 KST로 변환, naive면 UTC로 가정 후 KST로
+                        if pub_date.tzinfo is None:
+                            pub_date = pub_date.replace(tzinfo=timezone.utc).astimezone(KST)
+                        else:
+                            pub_date = pub_date.astimezone(KST)
                     else:
                         pub_date = datetime.now(KST)
                 except Exception as date_error:
                     # 날짜 파싱 실패 시 현재 시간 사용
                     pub_date = datetime.now(KST)
                 
-                # 날짜 및 시간 범위 확인
-                if start_dt <= pub_date <= end_dt:
+                # 디버깅: 첫 번째 기사의 날짜 정보 출력
+                if len(all_news) == 0 and date_filtered_count == 0:
+                    st.info(f"[디버깅] 첫 번째 기사 날짜: {date_str} → {pub_date} (날짜: {pub_date.date()})")
+                    st.info(f"[디버깅] 필터 범위: {start_dt.date()} ~ {end_dt.date()}")
+                    st.info(f"[디버깅] 범위 내 여부: {start_dt.date() <= pub_date.date() <= end_dt.date()}")
+                
+                # 날짜 및 시간 범위 확인 (날짜만 비교)
+                pub_date_only = pub_date.date()
+                start_date_only = start_dt.date()
+                end_date_only = end_dt.date()
+                
+                if start_date_only <= pub_date_only <= end_date_only:
                     date_filtered_count += 1
                     # 어떤 키워드와 매칭되는지 확인
                     title = clean_html_entities(item.get('title', ''))

@@ -113,30 +113,47 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                 query = keyword1
                 keywords = [keyword1]
             
-            # 네이버 뉴스 API 호출
-            params = {
-                "query": query,
-                "display": min(max_per_keyword * 2, 100),  # 2개 키워드이므로 2배로 요청 (100개)
-                "start": 1,
-                "sort": NAVER_API_SETTINGS["sort"]
-            }
+            # 페이지네이션을 통한 네이버 뉴스 API 호출
+            all_items = []
+            target_count = max_per_keyword * 2  # 목표 수집 개수
+            current_start = 1
             
-            response = requests.get(
-                NAVER_API_SETTINGS["base_url"],
-                headers=headers,
-                params=params,
-                timeout=30
-            )
+            while len(all_items) < target_count:
+                params = {
+                    "query": query,
+                    "display": min(100, target_count - len(all_items)),  # 남은 개수만큼 요청
+                    "start": current_start,
+                    "sort": NAVER_API_SETTINGS["sort"]
+                }
+                
+                response = requests.get(
+                    NAVER_API_SETTINGS["base_url"],
+                    headers=headers,
+                    params=params,
+                    timeout=30
+                )
+                
+                if response.status_code != 200:
+                    st.warning(f"'{query}' 검색 중 API 오류: {response.status_code}")
+                    break
+                
+                # JSON 응답 파싱
+                data = response.json()
+                items = data.get('items', [])
+                
+                if not items:  # 더 이상 결과가 없으면 중단
+                    break
+                
+                all_items.extend(items)
+                current_start += len(items)
+                
+                # API 호출 간격 조절
+                import time
+                time.sleep(0.1)
             
-            if response.status_code != 200:
-                st.warning(f"'{query}' 검색 중 API 오류: {response.status_code}")
-                continue
+            items = all_items
             
-            # JSON 응답 파싱
-            data = response.json()
-            items = data.get('items', [])
-            
-            st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집")
+            st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집 (목표: {target_count}개)")
             
             news_count_per_keyword = {}
             for keyword in keywords:
@@ -183,12 +200,16 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                     
                     if matched_keyword:
                         keyword_matched_count += 1
+                        # 언론사 정보 추출
+                        press_name = extract_press_from_url(item.get('link', ''))
+                        
                         news_item = {
                             'title': title,
                             'url': item.get('link', ''),
                             'date': pub_date.strftime('%Y-%m-%d'),
                             'summary': summary,
-                            'keyword': matched_keyword
+                            'keyword': matched_keyword,
+                            'press': press_name
                         }
                         all_news.append(news_item)
                         news_count_per_keyword[matched_keyword] += 1
@@ -224,6 +245,80 @@ def clean_html_entities(text):
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
     
     return clean_text
+
+def extract_press_from_url(url):
+    """URL에서 언론사 정보를 추출하는 함수"""
+    if not url:
+        return "언론사 정보 없음"
+    
+    try:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(url)
+        domain = parsed_url.netloc.lower()
+        
+        # 주요 언론사 도메인 매핑
+        press_mapping = {
+            'www.chosun.com': '조선일보',
+            'chosun.com': '조선일보',
+            'biz.chosun.com': '조선일보',
+            'www.joongang.co.kr': '중앙일보',
+            'joongang.co.kr': '중앙일보',
+            'www.donga.com': '동아일보',
+            'donga.com': '동아일보',
+            'www.hankyung.com': '한국경제',
+            'hankyung.com': '한국경제',
+            'magazine.hankyung.com': '한국경제',
+            'www.mk.co.kr': '매일경제',
+            'mk.co.kr': '매일경제',
+            'www.yna.co.kr': '연합뉴스',
+            'yna.co.kr': '연합뉴스',
+            'www.fnnews.com': '파이낸셜뉴스',
+            'fnnews.com': '파이낸셜뉴스',
+            'www.edaily.co.kr': '이데일리',
+            'edaily.co.kr': '이데일리',
+            'www.asiae.co.kr': '아시아경제',
+            'asiae.co.kr': '아시아경제',
+            'www.newspim.com': '뉴스핌',
+            'newspim.com': '뉴스핌',
+            'www.newsis.com': '뉴시스',
+            'newsis.com': '뉴시스',
+            'www.heraldcorp.com': '헤럴드경제',
+            'heraldcorp.com': '헤럴드경제',
+            'www.thebell.co.kr': '더벨',
+            'thebell.co.kr': '더벨',
+            'www.businesspost.co.kr': '비즈니스포스트',
+            'businesspost.co.kr': '비즈니스포스트',
+            'www.mt.co.kr': '머니투데이',
+            'mt.co.kr': '머니투데이',
+            'www.dailypharm.com': '데일리팜',
+            'dailypharm.com': '데일리팜',
+            'www.it.chosun.com': 'IT조선',
+            'it.chosun.com': 'IT조선',
+            'www.itchosun.com': 'IT조선',
+            'itchosun.com': 'IT조선'
+        }
+        
+        # 정확한 매칭
+        if domain in press_mapping:
+            return press_mapping[domain]
+        
+        # 부분 매칭 (서브도메인 포함)
+        for key, value in press_mapping.items():
+            if domain.endswith(key) or key.endswith(domain):
+                return value
+        
+        # 도메인에서 언론사명 추출 시도
+        domain_parts = domain.split('.')
+        if len(domain_parts) >= 2:
+            # 첫 번째 부분이 언론사명일 가능성
+            potential_press = domain_parts[0]
+            if potential_press not in ['www', 'news', 'www2', 'm']:
+                return potential_press.title()
+        
+        return domain  # 매칭되지 않으면 도메인 반환
+        
+    except Exception:
+        return "언론사 정보 없음"
 
 
 
@@ -561,9 +656,9 @@ def parse_ai_response(ai_response, news_list):
                         current_news['url'] = news['url']
                     # 원본 뉴스의 키워드 정보 저장
                     current_news['keyword'] = news.get('keyword', '')
-                    # 원본 뉴스의 언론사 정보도 활용
-                    if 'press_analysis' not in current_news and news.get('raw_press', {}).get('extracted_press'):
-                        current_news['press_analysis'] = news['raw_press']['extracted_press']
+                    # 원본 뉴스의 언론사 정보 활용
+                    if 'press_analysis' not in current_news:
+                        current_news['press_analysis'] = news.get('press', '언론사 정보 없음')
                     break
     
     # 마지막 뉴스 추가
@@ -781,9 +876,9 @@ def display_results(all_results, selected_categories):
                 # 테이블 형태로 표시
                 table_data = []
                 for news in selected_news:
-                    # UI용 테이블 데이터 (선별이유와 키워드 제외)
+                    # UI용 테이블 데이터 (검색 키워드 포함)
                     table_data.append({
-                        "카테고리": category,
+                        "검색키워드": news.get('keyword', '키워드 없음'),
                         "뉴스제목": news.get('title', '제목 없음'),
                         "언론사": news.get('press_analysis', '언론사 정보 없음'),
                         "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
@@ -792,11 +887,11 @@ def display_results(all_results, selected_categories):
                     # 엑셀용 데이터 (선별이유와 키워드 포함)
                     excel_data = {
                         "카테고리": category,
+                        "검색키워드": news.get('keyword', '키워드 없음'),
                         "뉴스제목": news.get('title', '제목 없음'),
                         "언론사": news.get('press_analysis', '언론사 정보 없음'),
                         "링크": news.get('url', ''),
-                        "선별이유": news.get('selection_reason', ''),
-                        "검색키워드": news.get('keyword', '')
+                        "선별이유": news.get('selection_reason', '')
                     }
                     all_excel_data.append(excel_data)
                 
@@ -835,3 +930,4 @@ def display_results(all_results, selected_categories):
 
 if __name__ == "__main__":
     main()
+

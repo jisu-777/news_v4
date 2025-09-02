@@ -202,8 +202,11 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
 
                 
                 # 날짜 및 시간 범위 확인 (카테고리별 다르게 적용)
-                if category_name in ["삼일PwC", "경쟁사"]:
-                    # 삼일PwC, 경쟁사: 설정된 마지막 시간 기준 3일 전까지
+                if category_name == "삼일PwC":
+                    # 삼일PwC: 날짜 필터링 없음 (GPT가 판별)
+                    date_in_range = True
+                elif category_name == "경쟁사":
+                    # 경쟁사: 설정된 마지막 시간 기준 3일 전까지
                     three_days_ago = end_dt - timedelta(days=3)
                     date_in_range = pub_date >= three_days_ago
                 else:
@@ -218,6 +221,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
                     
                     # 검색 쿼리를 키워드로 사용
                     search_keyword = query  # "삼일PWC OR 삼일회계법인" 형태
+                    st.info(f"[디버깅] 뉴스 수집 키워드: {search_keyword}")
                     
                     # 언론사 정보 추출 (originallink 우선 사용)
                     press_name = extract_press_from_url(
@@ -700,8 +704,10 @@ def parse_ai_response(ai_response, news_list):
                     current_news['date'] = news['date']
                     if 'url' not in current_news:
                         current_news['url'] = news['url']
-                    # 원본 뉴스의 키워드 정보 저장
-                    current_news['keyword'] = news.get('keyword', '')
+                    # 원본 뉴스의 키워드 정보 저장 (디버깅용 로그 추가)
+                    keyword = news.get('keyword', '')
+                    current_news['keyword'] = keyword
+                    st.info(f"[디버깅] 키워드 매칭: {keyword}")
                     # 언론사 정보 우선순위: 우리 매핑 > AI 추출
                     original_press = news.get('press', '')
                     if original_press and original_press != '언론사 정보 없음':
@@ -928,29 +934,36 @@ def display_results(all_results, selected_categories):
                 # 테이블 형태로 표시
                 table_data = []
                 for news in selected_news:
-                    # UI용 테이블 데이터 (검색 키워드 포함)
+                    # UI용 테이블 데이터 (키워드 제외)
                     table_data.append({
-                        "검색키워드": news.get('keyword', '키워드 없음'),
                         "뉴스제목": news.get('title', '제목 없음'),
                         "언론사": news.get('press_analysis', '언론사 정보 없음'),
                         "링크": f"[링크]({news.get('url', '')})" if news.get('url') else '링크 없음'
                     })
-                    
-                    # 엑셀용 데이터 (선별이유와 키워드 포함)
-                    excel_data = {
-                        "카테고리": category,
-                        "검색키워드": news.get('keyword', '키워드 없음'),
-                        "뉴스제목": news.get('title', '제목 없음'),
-                        "언론사": news.get('press_analysis', '언론사 정보 없음'),
-                        "링크": news.get('url', ''),
-                        "선별이유": news.get('selection_reason', '')
-                    }
-                    all_excel_data.append(excel_data)
                 
                 # Streamlit 테이블로 표시
                 st.table(table_data)
             else:
                 st.info("AI 분석 결과 해당 카테고리에서 선별할 만한 뉴스가 없습니다.")
+            
+            # 엑셀용: 모든 수집된 뉴스 포함 (선별되지 않은 뉴스도 포함)
+            all_collected_news = result['collected_news']
+            for news in all_collected_news:
+                # 선별된 뉴스인지 확인
+                is_selected = any(selected.get('title', '') in news.get('title', '') or news.get('title', '') in selected.get('title', '') for selected in selected_news)
+                
+                excel_data = {
+                    "카테고리": category,
+                    "검색키워드": news.get('keyword', '키워드 없음'),
+                    "뉴스제목": news.get('title', '제목 없음'),
+                    "언론사": news.get('press', '언론사 정보 없음'),
+                    "링크": news.get('url', ''),
+                    "발행일": news.get('date', '날짜 없음'),
+                    "요약": news.get('summary', '요약 없음'),
+                    "선별여부": "선별됨" if is_selected else "제외됨",
+                    "선별이유": next((selected.get('selection_reason', '') for selected in selected_news if selected.get('title', '') in news.get('title', '') or news.get('title', '') in selected.get('title', '')), '')
+                }
+                all_excel_data.append(excel_data)
     
     # 엑셀 다운로드 버튼 (결과가 있을 때만 표시)
     if all_excel_data:

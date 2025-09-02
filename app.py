@@ -77,7 +77,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=33):
+def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=50):
     """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집 - 2개 키워드씩 묶어서 검색"""
     all_news = []
     
@@ -95,23 +95,18 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
         "X-Naver-Client-Secret": client_secret
     }
     
-    # 키워드를 3개씩 묶어서 처리
-    keyword_groups = []
-    for i in range(0, len(category_keywords), 3):
-        if i + 2 < len(category_keywords):
-            keyword_groups.append((category_keywords[i], category_keywords[i + 1], category_keywords[i + 2]))
-        elif i + 1 < len(category_keywords):
-            keyword_groups.append((category_keywords[i], category_keywords[i + 1], None))
+    # 키워드를 2개씩 묶어서 처리
+    keyword_pairs = []
+    for i in range(0, len(category_keywords), 2):
+        if i + 1 < len(category_keywords):
+            keyword_pairs.append((category_keywords[i], category_keywords[i + 1]))
         else:
-            keyword_groups.append((category_keywords[i], None, None))
+            keyword_pairs.append((category_keywords[i], None))
     
-    for keyword1, keyword2, keyword3 in keyword_groups:
+    for keyword1, keyword2 in keyword_pairs:
         try:
-            # 3개 키워드를 OR 조건으로 검색
-            if keyword3:
-                query = f"{keyword1} OR {keyword2} OR {keyword3}"
-                keywords = [keyword1, keyword2, keyword3]
-            elif keyword2:
+            # 2개 키워드를 OR 조건으로 검색
+            if keyword2:
                 query = f"{keyword1} OR {keyword2}"
                 keywords = [keyword1, keyword2]
             else:
@@ -121,7 +116,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             # 네이버 뉴스 API 호출
             params = {
                 "query": query,
-                "display": min(max_per_keyword * 3, 100),  # 3개 키워드이므로 3배로 요청 (99개)
+                "display": min(max_per_keyword * 2, 100),  # 2개 키워드이므로 2배로 요청 (100개)
                 "start": 1,
                 "sort": NAVER_API_SETTINGS["sort"]
             }
@@ -142,10 +137,16 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             items = data.get('items', [])
             
             st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집")
+            st.info(f"[필터링] 날짜 범위 통과: {date_filtered_count}개, 키워드 매칭: {keyword_matched_count}개")
             
             news_count_per_keyword = {}
             for keyword in keywords:
                 news_count_per_keyword[keyword] = 0
+            
+            # 날짜 필터링 통계를 위한 카운터
+            total_items = len(items)
+            date_filtered_count = 0
+            keyword_matched_count = 0
             
             for item in items:
                 # 각 키워드별로 최대 개수 확인
@@ -169,6 +170,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                 
                 # 날짜 및 시간 범위 확인
                 if start_dt <= pub_date <= end_dt:
+                    date_filtered_count += 1
                     # 어떤 키워드와 매칭되는지 확인
                     title = clean_html_entities(item.get('title', ''))
                     summary = clean_html_entities(item.get('description', ''))
@@ -181,6 +183,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                                 break
                     
                     if matched_keyword:
+                        keyword_matched_count += 1
                         news_item = {
                             'title': title,
                             'url': item.get('link', ''),
@@ -715,7 +718,7 @@ def main():
                     category_keywords, 
                     start_dt, 
                     end_dt, 
-                    max_per_keyword=33
+                    max_per_keyword=50
                 )
             
             if not news_list:

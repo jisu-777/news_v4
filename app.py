@@ -137,7 +137,6 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             items = data.get('items', [])
             
             st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집")
-            st.info(f"[필터링] 날짜 범위 통과: {date_filtered_count}개, 키워드 매칭: {keyword_matched_count}개")
             
             news_count_per_keyword = {}
             for keyword in keywords:
@@ -193,6 +192,9 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                         }
                         all_news.append(news_item)
                         news_count_per_keyword[matched_keyword] += 1
+                    
+            # 필터링 통계 표시
+            st.info(f"[필터링] 날짜 범위 통과: {date_filtered_count}개, 키워드 매칭: {keyword_matched_count}개")
                     
         except Exception as e:
             st.warning(f"'{query if 'query' in locals() else keyword1}' 검색 중 오류: {str(e)}")

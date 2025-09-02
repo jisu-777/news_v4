@@ -203,11 +203,8 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
                 
                 # 날짜 및 시간 범위 확인 (카테고리별 다르게 적용)
                 if category_name in ["삼일PwC", "경쟁사"]:
-                    # 삼일PwC, 경쟁사: 날짜만 비교
-                    pub_date_only = pub_date.date()
-                    start_date_only = start_dt.date()
-                    end_date_only = end_dt.date()
-                    date_in_range = start_date_only <= pub_date_only <= end_date_only
+                    # 삼일PwC, 경쟁사: 날짜 필터링 없음 (모든 기사 수집)
+                    date_in_range = True
                 else:
                     # 다른 카테고리: 시간까지 비교
                     date_in_range = start_dt <= pub_date <= end_dt
@@ -482,8 +479,8 @@ def analyze_news_with_ai(news_list, category_name):
 ...
 
 **중요**: 
-- **무조건 5개 이상의 뉴스를 반드시 선별해야 합니다.** 5개 미만으로 선별하면 안됩니다.
-- 가능하면 7-10개까지 선별하되, 최소 5개는 반드시 선별하세요.
+- **무조건 1개 이상의 뉴스를 반드시 선별해야 합니다.** 1개 미만으로 선별하면 안됩니다.
+- 가능하면 7-10개까지 선별하되, 최소 1개는 반드시 선별하세요.
 - 선별된 뉴스에 중복이 없어야 합니다.
 - 내용도 반드시 중복되면 안됩니다.
 - 언론사명은 정확하게 표기해주세요.
@@ -601,8 +598,8 @@ def analyze_news_with_ai(news_list, category_name):
 ...
 
 **중요**: 
-- **무조건 5개 이상의 뉴스를 반드시 선별해야 합니다.** 5개 미만으로 선별하면 안됩니다.
-- 가능하면 7-10개까지 선별하되, 최소 5개는 반드시 선별하세요.
+- **무조건 1개 이상의 뉴스를 반드시 선별해야 합니다.** 1개 미만으로 선별하면 안됩니다.
+- 가능하면 7-10개까지 선별하되, 최소 1개는 반드시 선별하세요.
 - 선별된 뉴스에 중복이 없어야 합니다.
 - 내용도 반드시 중복되면 안됩니다.
 - 언론사명은 정확하게 표기해주세요.

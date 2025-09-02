@@ -418,24 +418,14 @@ def analyze_news_with_ai(news_list, category_name):
 
 **제외(N)**
 - 스포츠단 기사 (야구단, 축구단, 선수/감독 등)
-- 신제품 홍보/사회공헌/ESG/기부 기사
+
 - 단순 시스템 장애, 버그, 서비스 오류
-- 기술 성능/품질/테스트 홍보 기사
+
 - 목표주가 기사
-- 단순 언급, 경력 소개, 배경 문장 수준
+
 - 광고성/스폰서/외국어 기사
 
-1. 단순 언급 수준
-- 인물 경력 소개: "삼일회계법인 출신", 과거 경력 언급 정도
-- 한 문장 배경 소개: 한두 문장으로 배경 설명 차원에서만 언급
-- 통계 출처 표기: 단순히 자료 출처로만 언급 (기사 주제와 무관)
-- 리스트 단순 나열: 여러 기관을 나열하는 과정에서 형식적 언급
-
-2. 기사 주제와 직접 관련성이 없는 경우
-- 주요 주제 무관: 삼일회계법인/삼일PwC/PwC가 기사 핵심 주제가 아닌 경우
-- 사례 인용: PwC가 단순 사례나 참고자료로만 인용된 경우
-- 배경 설명: 한 줄 통계·근거가 문맥상 기사 핵심 근거가 아니고 배경설명 수준인 경우
-경계 사례 판단 기준
+1
 
 명확한 포함 (Y) 사례
 - a. 컨소시엄 명단: 여러 기관 중 한 멤버로 이름만 열거 → Y
@@ -961,6 +951,30 @@ def display_results(all_results, selected_categories):
                 # 선별된 뉴스인지 확인
                 is_selected = any(selected.get('title', '') in news.get('title', '') or news.get('title', '') in selected.get('title', '') for selected in selected_news)
                 
+                # 선별 이유 또는 제외 이유 결정
+                if is_selected:
+                    selection_reason = next((selected.get('selection_reason', '') for selected in selected_news if selected.get('title', '') in news.get('title', '') or news.get('title', '') in selected.get('title', '')), '')
+                else:
+                    # 제외된 뉴스의 경우 제외 이유 추정
+                    title = news.get('title', '').lower()
+                    summary = news.get('summary', '').lower()
+                    
+                    # 제외 이유 판단 로직
+                    if any(keyword in title or keyword in summary for keyword in ['야구단', '축구단', 'kbo', '선수', '감독', '구단']):
+                        selection_reason = '스포츠단 관련 기사'
+                    elif any(keyword in title or keyword in summary for keyword in ['출시', '기부', '환경', '캠페인', '사회공헌', '나눔', 'esg']):
+                        selection_reason = '신제품 홍보/사회공헌/ESG/기부 기사'
+                    elif any(keyword in title or keyword in summary for keyword in ['장애', '오류', '버그', '점검', '중단', '실패']):
+                        selection_reason = '단순 시스템 장애/버그/서비스 오류'
+                    elif any(keyword in title or keyword in summary for keyword in ['우수성', '기술력', '성능', '품질', '테스트']):
+                        selection_reason = '기술 성능/품질/테스트 홍보 기사'
+                    elif any(keyword in title or keyword in summary for keyword in ['목표가', '목표주가']):
+                        selection_reason = '목표주가 기사'
+                    elif any(keyword in title or keyword in summary for keyword in ['출신', '경력', '배경']):
+                        selection_reason = '단순 언급/경력 소개/배경 문장'
+                    else:
+                        selection_reason = '관련성 부족 또는 기타 제외 사유'
+                
                 excel_data = {
                     "카테고리": category,
                     "검색키워드": news.get('keyword', '키워드 없음'),
@@ -970,7 +984,7 @@ def display_results(all_results, selected_categories):
                     "발행일": news.get('date', '날짜 없음'),
                     "요약": news.get('summary', '요약 없음'),
                     "선별여부": "선별됨" if is_selected else "제외됨",
-                    "선별이유": next((selected.get('selection_reason', '') for selected in selected_news if selected.get('title', '') in news.get('title', '') or news.get('title', '') in selected.get('title', '')), '')
+                    "선별/제외이유": selection_reason
                 }
                 all_excel_data.append(excel_data)
     

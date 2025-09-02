@@ -77,7 +77,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_keyword=50):
+def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_name="", max_per_keyword=50):
     """네이버 뉴스 API에서 카테고리별 키워드로 뉴스 수집 - 2개 키워드씩 묶어서 검색"""
     all_news = []
     
@@ -156,12 +156,27 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집 (목표: {target_count}개)")
             st.info(f"[날짜 범위] {start_dt.strftime('%Y-%m-%d %H:%M')} ~ {end_dt.strftime('%Y-%m-%d %H:%M')}")
             
+            # 디버깅: 첫 번째 기사 샘플 정보 (키워드 묶음 단위)
+            if len(items) > 0:
+                first_item = items[0]
+                first_date_str = first_item.get('pubDate', '')
+                if first_date_str:
+                    try:
+                        from email.utils import parsedate_to_datetime
+                        first_pub_date = parsedate_to_datetime(first_date_str)
+                        if first_pub_date.tzinfo is None:
+                            first_pub_date = first_pub_date.replace(tzinfo=timezone.utc).astimezone(KST)
+                        else:
+                            first_pub_date = first_pub_date.astimezone(KST)
+                        st.info(f"[샘플] 첫 번째 기사: {first_item.get('title', '')[:50]}... ({first_pub_date.strftime('%Y-%m-%d %H:%M')})")
+                    except:
+                        st.info(f"[샘플] 첫 번째 기사: {first_item.get('title', '')[:50]}... (날짜 파싱 실패)")
+            
 
             
             # 날짜 필터링 통계를 위한 카운터
             total_items = len(items)
             date_filtered_count = 0
-            keyword_matched_count = 0
             
             for item in items:
                 
@@ -184,14 +199,20 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                     # 날짜 파싱 실패 시 현재 시간 사용
                     pub_date = datetime.now(KST)
                 
-                # 디버깅: 첫 번째 기사의 날짜 정보 출력
-                if len(all_news) == 0 and date_filtered_count == 0:
-                    st.info(f"[디버깅] 첫 번째 기사 날짜: {date_str} → {pub_date}")
-                    st.info(f"[디버깅] 필터 범위: {start_dt} ~ {end_dt}")
-                    st.info(f"[디버깅] 범위 내 여부: {start_dt <= pub_date <= end_dt}")
+
                 
-                # 날짜 및 시간 범위 확인 (시간까지 비교)
-                if start_dt <= pub_date <= end_dt:
+                # 날짜 및 시간 범위 확인 (카테고리별 다르게 적용)
+                if category_name in ["삼일PwC", "경쟁사"]:
+                    # 삼일PwC, 경쟁사: 날짜만 비교
+                    pub_date_only = pub_date.date()
+                    start_date_only = start_dt.date()
+                    end_date_only = end_dt.date()
+                    date_in_range = start_date_only <= pub_date_only <= end_date_only
+                else:
+                    # 다른 카테고리: 시간까지 비교
+                    date_in_range = start_dt <= pub_date <= end_dt
+                
+                if date_in_range:
                     date_filtered_count += 1
                     # 제목과 요약 정리
                     title = clean_html_entities(item.get('title', ''))
@@ -200,8 +221,11 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                     # 검색 쿼리를 키워드로 사용
                     search_keyword = query  # "삼일PWC OR 삼일회계법인" 형태
                     
-                    # 언론사 정보 추출
-                    press_name = extract_press_from_url(item.get('link', ''))
+                    # 언론사 정보 추출 (originallink 우선 사용)
+                    press_name = extract_press_from_url(
+                        url=item.get('link', ''),
+                        originallink=item.get('originallink')
+                    )
                     
                     news_item = {
                         'title': title,
@@ -212,10 +236,9 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                         'press': press_name
                     }
                     all_news.append(news_item)
-                    keyword_matched_count += 1
                     
             # 필터링 통계 표시
-            st.info(f"[필터링] 날짜 범위 통과: {date_filtered_count}개, 키워드 매칭: {keyword_matched_count}개")
+            st.info(f"[필터링] 날짜 범위 통과: {date_filtered_count}개")
                     
         except Exception as e:
             st.warning(f"'{query if 'query' in locals() else keyword1}' 검색 중 오류: {str(e)}")
@@ -246,77 +269,100 @@ def clean_html_entities(text):
     
     return clean_text
 
-def extract_press_from_url(url):
-    """URL에서 언론사 정보를 추출하는 함수"""
-    if not url:
+def extract_press_from_url(url: str, originallink: str | None = None) -> str:
+    """
+    URL에서 언론사 정보를 추출.
+    - originallink가 있으면 우선 사용 (네이버 뉴스 원문 복원)
+    - 네이버 뉴스 링크는 별도 처리
+    - 하드코딩 매핑 + 베이스도메인 매핑
+    - 안전한 fallback
+    """
+    if not url and not originallink:
         return "언론사 정보 없음"
-    
+
+    from urllib.parse import urlparse, parse_qs
+
+    # 1) originallink가 있으면 그걸로 교체 (정확도 ↑)
+    target_url = originallink or url
     try:
-        from urllib.parse import urlparse
-        parsed_url = urlparse(url)
-        domain = parsed_url.netloc.lower()
-        
-        # 주요 언론사 도메인 매핑
-        press_mapping = {
-            'www.chosun.com': '조선일보',
-            'chosun.com': '조선일보',
-            'biz.chosun.com': '조선일보',
-            'www.joongang.co.kr': '중앙일보',
-            'joongang.co.kr': '중앙일보',
-            'www.donga.com': '동아일보',
-            'donga.com': '동아일보',
-            'www.hankyung.com': '한국경제',
-            'hankyung.com': '한국경제',
-            'magazine.hankyung.com': '한국경제',
-            'www.mk.co.kr': '매일경제',
-            'mk.co.kr': '매일경제',
-            'www.yna.co.kr': '연합뉴스',
-            'yna.co.kr': '연합뉴스',
-            'www.fnnews.com': '파이낸셜뉴스',
-            'fnnews.com': '파이낸셜뉴스',
-            'www.edaily.co.kr': '이데일리',
-            'edaily.co.kr': '이데일리',
-            'www.asiae.co.kr': '아시아경제',
-            'asiae.co.kr': '아시아경제',
-            'www.newspim.com': '뉴스핌',
-            'newspim.com': '뉴스핌',
-            'www.newsis.com': '뉴시스',
-            'newsis.com': '뉴시스',
-            'www.heraldcorp.com': '헤럴드경제',
-            'heraldcorp.com': '헤럴드경제',
-            'www.thebell.co.kr': '더벨',
-            'thebell.co.kr': '더벨',
-            'www.businesspost.co.kr': '비즈니스포스트',
-            'businesspost.co.kr': '비즈니스포스트',
-            'www.mt.co.kr': '머니투데이',
-            'mt.co.kr': '머니투데이',
-            'www.dailypharm.com': '데일리팜',
-            'dailypharm.com': '데일리팜',
-            'www.it.chosun.com': 'IT조선',
-            'it.chosun.com': 'IT조선',
-            'www.itchosun.com': 'IT조선',
-            'itchosun.com': 'IT조선'
+        parsed = urlparse(target_url)
+        domain = parsed.netloc.lower()
+
+        # www.만 제거한 베이스 도메인 (서브도메인 과대일치 방지)
+        base = domain[4:] if domain.startswith("www.") else domain
+
+        # 네이버 뉴스 특수 처리: news.naver.com / n.news.naver.com / mnews.naver.com
+        if base in {"news.naver.com", "n.news.naver.com", "m.news.naver.com", "mnews.naver.com"}:
+            # 네이버 기사 URL엔 보통 oid(언론사 id) / aid가 포함됨
+            # 예: https://n.news.naver.com/mnews/article/001/0012345678
+            # path 분해해서 article/<oid>/<aid> 패턴 탐색
+            path_parts = [p for p in parsed.path.split("/") if p]
+            press_from_oid = None
+            if "article" in path_parts:
+                try:
+                    i = path_parts.index("article")
+                    oid = path_parts[i + 1]
+                    # 최소 맵만 넣어 실사용: (필요에 따라 확장)
+                    OID_MAP = {
+                        "001": "연합뉴스",
+                        "009": "매일경제",
+                        "015": "한국경제",
+                        "020": "동아일보",
+                        "023": "조선일보",
+                        "024": "매경이코노미",
+                        "025": "중앙일보",
+                        "032": "경향신문",
+                        "056": "KBS",
+                        "079": "노컷뉴스",
+                        "119": "데일리안",
+                        "277": "아시아경제",
+                        "421": "뉴스1",
+                        # 필요 언론사 계속 보강
+                    }
+                    press_from_oid = OID_MAP.get(oid)
+                except Exception:
+                    pass
+
+            # oid로 못 찾았으면 네이버 링크에선 명확히 단정하지 않음
+            return press_from_oid or "네이버 뉴스(원문 확인)"
+
+        # 2) 주요 언론사 매핑 (서브도메인 포함 매칭은 base 기준으로)
+        PRESS_MAP = {
+            "chosun.com": "조선일보",
+            "biz.chosun.com": "조선일보",
+            "joongang.co.kr": "중앙일보",
+            "donga.com": "동아일보",
+            "hankyung.com": "한국경제",
+            "magazine.hankyung.com": "한국경제",
+            "mk.co.kr": "매일경제",
+            "yna.co.kr": "연합뉴스",
+            "fnnews.com": "파이낸셜뉴스",
+            "edaily.co.kr": "이데일리",
+            "asiae.co.kr": "아시아경제",
+            "newspim.com": "뉴스핌",
+            "newsis.com": "뉴시스",
+            "heraldcorp.com": "헤럴드경제",
+            "thebell.co.kr": "더벨",
+            "businesspost.co.kr": "비즈니스포스트",
+            "mt.co.kr": "머니투데이",
+            "dailypharm.com": "데일리팜",
+            "it.chosun.com": "IT조선",
+            "itchosun.com": "IT조선",
         }
-        
-        # 정확한 매칭
-        if domain in press_mapping:
-            return press_mapping[domain]
-        
-        # 부분 매칭 (서브도메인 포함)
-        for key, value in press_mapping.items():
-            if domain.endswith(key) or key.endswith(domain):
-                return value
-        
-        # 도메인에서 언론사명 추출 시도
-        domain_parts = domain.split('.')
-        if len(domain_parts) >= 2:
-            # 첫 번째 부분이 언론사명일 가능성
-            potential_press = domain_parts[0]
-            if potential_press not in ['www', 'news', 'www2', 'm']:
-                return potential_press.title()
-        
-        return domain  # 매칭되지 않으면 도메인 반환
-        
+
+        # 정확/부분 매칭 (base가 map key이거나, base가 key의 서브도메인인 경우)
+        if base in PRESS_MAP:
+            return PRESS_MAP[base]
+        # base가 예: it.chosun.com 이고 키가 chosun.com인 경우를 커버
+        for k, v in PRESS_MAP.items():
+            if base.endswith(k):
+                return v
+
+        # 3) originallink가 없다면, Naver Search API의 `link`에만 의존하므로
+        #    이 경우엔 원문을 못찾을 수 있음 → target_url이 naver가 아니면 base 반환
+        #    (단, 의미없는 첫 세그먼트 title()은 지양)
+        return base
+
     except Exception:
         return "언론사 정보 없음"
 
@@ -815,6 +861,7 @@ def main():
                     category_keywords, 
                     start_dt, 
                     end_dt, 
+                    category_name=category,
                     max_per_keyword=50
                 )
             

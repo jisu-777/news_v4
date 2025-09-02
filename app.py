@@ -156,9 +156,7 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             st.info(f"[검색 결과] {query}: {len(items)}개 기사 수집 (목표: {target_count}개)")
             st.info(f"[날짜 범위] {start_dt.strftime('%Y-%m-%d %H:%M')} ~ {end_dt.strftime('%Y-%m-%d %H:%M')}")
             
-            news_count_per_keyword = {}
-            for keyword in keywords:
-                news_count_per_keyword[keyword] = 0
+
             
             # 날짜 필터링 통계를 위한 카운터
             total_items = len(items)
@@ -166,9 +164,6 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
             keyword_matched_count = 0
             
             for item in items:
-                # 각 키워드별로 최대 개수 확인
-                if all(count >= max_per_keyword for count in news_count_per_keyword.values()):
-                    break
                 
                 # 날짜 파싱 (네이버 API는 RFC 822 형식)
                 try:
@@ -191,43 +186,33 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, max_per_key
                 
                 # 디버깅: 첫 번째 기사의 날짜 정보 출력
                 if len(all_news) == 0 and date_filtered_count == 0:
-                    st.info(f"[디버깅] 첫 번째 기사 날짜: {date_str} → {pub_date} (날짜: {pub_date.date()})")
-                    st.info(f"[디버깅] 필터 범위: {start_dt.date()} ~ {end_dt.date()}")
-                    st.info(f"[디버깅] 범위 내 여부: {start_dt.date() <= pub_date.date() <= end_dt.date()}")
+                    st.info(f"[디버깅] 첫 번째 기사 날짜: {date_str} → {pub_date}")
+                    st.info(f"[디버깅] 필터 범위: {start_dt} ~ {end_dt}")
+                    st.info(f"[디버깅] 범위 내 여부: {start_dt <= pub_date <= end_dt}")
                 
-                # 날짜 및 시간 범위 확인 (날짜만 비교)
-                pub_date_only = pub_date.date()
-                start_date_only = start_dt.date()
-                end_date_only = end_dt.date()
-                
-                if start_date_only <= pub_date_only <= end_date_only:
+                # 날짜 및 시간 범위 확인 (시간까지 비교)
+                if start_dt <= pub_date <= end_dt:
                     date_filtered_count += 1
-                    # 어떤 키워드와 매칭되는지 확인
+                    # 제목과 요약 정리
                     title = clean_html_entities(item.get('title', ''))
                     summary = clean_html_entities(item.get('description', ''))
                     
-                    matched_keyword = None
-                    for keyword in keywords:
-                        if keyword in title or keyword in summary:
-                            if news_count_per_keyword[keyword] < max_per_keyword:
-                                matched_keyword = keyword
-                                break
+                    # 검색 쿼리를 키워드로 사용
+                    search_keyword = query  # "삼일PWC OR 삼일회계법인" 형태
                     
-                    if matched_keyword:
-                        keyword_matched_count += 1
-                        # 언론사 정보 추출
-                        press_name = extract_press_from_url(item.get('link', ''))
-                        
-                        news_item = {
-                            'title': title,
-                            'url': item.get('link', ''),
-                            'date': pub_date.strftime('%Y-%m-%d'),
-                            'summary': summary,
-                            'keyword': matched_keyword,
-                            'press': press_name
-                        }
-                        all_news.append(news_item)
-                        news_count_per_keyword[matched_keyword] += 1
+                    # 언론사 정보 추출
+                    press_name = extract_press_from_url(item.get('link', ''))
+                    
+                    news_item = {
+                        'title': title,
+                        'url': item.get('link', ''),
+                        'date': pub_date.strftime('%Y-%m-%d'),
+                        'summary': summary,
+                        'keyword': search_keyword,
+                        'press': press_name
+                    }
+                    all_news.append(news_item)
+                    keyword_matched_count += 1
                     
             # 필터링 통계 표시
             st.info(f"[필터링] 날짜 범위 통과: {date_filtered_count}개, 키워드 매칭: {keyword_matched_count}개")
@@ -714,7 +699,7 @@ def main():
     
     # 날짜 및 시간 필터
     st.sidebar.markdown("### 📅 날짜 및 시간 범위")
-    now = datetime.now()
+    now = datetime.now(KST)
     default_start = now - timedelta(days=1)
     
     col1, col2 = st.sidebar.columns(2)

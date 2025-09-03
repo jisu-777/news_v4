@@ -264,6 +264,29 @@ def clean_html_entities(text):
     
     return clean_text
 
+def check_title_similarity(title1, title2):
+    """제목 유사도를 계산하는 함수"""
+    if not title1 or not title2:
+        return 0.0
+    
+    # 제목을 소문자로 변환하고 특수문자 제거
+    import re
+    clean_title1 = re.sub(r'[^\w\s]', '', title1.lower())
+    clean_title2 = re.sub(r'[^\w\s]', '', title2.lower())
+    
+    # 단어로 분리
+    words1 = set(clean_title1.split())
+    words2 = set(clean_title2.split())
+    
+    if not words1 or not words2:
+        return 0.0
+    
+    # Jaccard 유사도 계산
+    intersection = len(words1.intersection(words2))
+    union = len(words1.union(words2))
+    
+    return intersection / union if union > 0 else 0.0
+
 def extract_press_from_url(url: str, originallink: str | None = None) -> str:
     """
     URL에서 언론사 정보를 추출.
@@ -657,36 +680,48 @@ def analyze_news_with_ai(news_list, category_name):
                         
                         return total_score
                     
-                    # 삼일PwC 관련성 기준으로 정렬하여 선택
-                    best_news = sorted(news_list, key=samil_relevance_score)[:fallback_count]
-                    
-                    # 선택된 뉴스들을 결과에 추가
+                    # 삼일PwC 관련성 기준으로 정렬하여 선택 (중복 제거 포함)
+                    sorted_news = sorted(news_list, key=samil_relevance_score)
                     selected_news_list = []
-                    for i, news in enumerate(best_news):
-                        title = news.get("title", "").lower()
-                        summary = news.get("summary", "").lower()
+                    
+                    for news in sorted_news:
+                        if len(selected_news_list) >= fallback_count:
+                            break
+                            
+                        # 중복 체크
+                        is_duplicate = False
+                        for selected in selected_news_list:
+                            # 제목 유사도 체크
+                            title_similarity = check_title_similarity(news.get("title", ""), selected.get("title", ""))
+                            if title_similarity > 0.7:  # 70% 이상 유사하면 중복으로 간주
+                                is_duplicate = True
+                                break
                         
-                        # 관련성 수준 판단
-                        samil_keywords = ["삼일pwc", "삼일회계법인", "삼일 pwc", "삼일 회계법인"]
-                        has_samil_in_title = any(keyword in title for keyword in samil_keywords)
-                        has_samil_in_summary = any(keyword in summary for keyword in samil_keywords)
-                        
-                        if has_samil_in_title:
-                            fallback_reason = f"AI 무선별 → 폴백(제목에 삼일PwC 키워드 포함 자동선택 {i+1}/{fallback_count})"
-                        elif has_samil_in_summary:
-                            fallback_reason = f"AI 무선별 → 폴백(요약에 삼일PwC 키워드 포함 자동선택 {i+1}/{fallback_count})"
-                        else:
-                            fallback_reason = f"AI 무선별 → 폴백(검색키워드 기준 자동선택 {i+1}/{fallback_count})"
-                        
-                        selected_news_list.append({
-                            "title": news.get("title", "제목 없음"),
-                            "url": news.get("url", ""),
-                            "date": news.get("date", ""),
-                            "keyword": news.get("keyword", ""),
-                            "press_analysis": news.get("press", "언론사 정보 없음"),
-                            "selection_reason": fallback_reason,
-                            "importance": "보통",
-                        })
+                        if not is_duplicate:
+                            title = news.get("title", "").lower()
+                            summary = news.get("summary", "").lower()
+                            
+                            # 관련성 수준 판단
+                            samil_keywords = ["삼일pwc", "삼일회계법인", "삼일 pwc", "삼일 회계법인"]
+                            has_samil_in_title = any(keyword in title for keyword in samil_keywords)
+                            has_samil_in_summary = any(keyword in summary for keyword in samil_keywords)
+                            
+                            if has_samil_in_title:
+                                fallback_reason = f"AI 무선별 → 폴백(제목에 삼일PwC 키워드 포함 자동선택 {len(selected_news_list)+1}/{fallback_count})"
+                            elif has_samil_in_summary:
+                                fallback_reason = f"AI 무선별 → 폴백(요약에 삼일PwC 키워드 포함 자동선택 {len(selected_news_list)+1}/{fallback_count})"
+                            else:
+                                fallback_reason = f"AI 무선별 → 폴백(검색키워드 기준 자동선택 {len(selected_news_list)+1}/{fallback_count})"
+                            
+                            selected_news_list.append({
+                                "title": news.get("title", "제목 없음"),
+                                "url": news.get("url", ""),
+                                "date": news.get("date", ""),
+                                "keyword": news.get("keyword", ""),
+                                "press_analysis": news.get("press", "언론사 정보 없음"),
+                                "selection_reason": fallback_reason,
+                                "importance": "보통",
+                            })
                 
                 elif category_name == "경쟁사":
                     # 경쟁사 폴백 로직: 삼정KPMG, 딜로이트안진, 한영EY와 가장 관련성이 높은 뉴스 선택
@@ -742,39 +777,51 @@ def analyze_news_with_ai(news_list, category_name):
                         
                         return total_score
                     
-                    # 경쟁사 관련성 기준으로 정렬하여 선택
-                    best_news = sorted(news_list, key=competitor_relevance_score)[:fallback_count]
-                    
-                    # 선택된 뉴스들을 결과에 추가
+                    # 경쟁사 관련성 기준으로 정렬하여 선택 (중복 제거 포함)
+                    sorted_news = sorted(news_list, key=competitor_relevance_score)
                     selected_news_list = []
-                    for i, news in enumerate(best_news):
-                        title = news.get("title", "").lower()
-                        summary = news.get("summary", "").lower()
+                    
+                    for news in sorted_news:
+                        if len(selected_news_list) >= fallback_count:
+                            break
+                            
+                        # 중복 체크
+                        is_duplicate = False
+                        for selected in selected_news_list:
+                            # 제목 유사도 체크
+                            title_similarity = check_title_similarity(news.get("title", ""), selected.get("title", ""))
+                            if title_similarity > 0.7:  # 70% 이상 유사하면 중복으로 간주
+                                is_duplicate = True
+                                break
                         
-                        # 관련성 수준 판단
-                        competitor_keywords = [
-                            "삼정kpmg", "삼정 kpmg", "삼정회계법인", "딜로이트안진", "딜로이트 안진", 
-                            "안진회계법인", "한영ey", "한영 ey", "한영회계법인"
-                        ]
-                        has_competitor_in_title = any(keyword in title for keyword in competitor_keywords)
-                        has_competitor_in_summary = any(keyword in summary for keyword in competitor_keywords)
-                        
-                        if has_competitor_in_title:
-                            fallback_reason = f"AI 무선별 → 폴백(제목에 경쟁사 키워드 포함 자동선택 {i+1}/{fallback_count})"
-                        elif has_competitor_in_summary:
-                            fallback_reason = f"AI 무선별 → 폴백(요약에 경쟁사 키워드 포함 자동선택 {i+1}/{fallback_count})"
-                        else:
-                            fallback_reason = f"AI 무선별 → 폴백(검색키워드 기준 자동선택 {i+1}/{fallback_count})"
-                        
-                        selected_news_list.append({
-                            "title": news.get("title", "제목 없음"),
-                            "url": news.get("url", ""),
-                            "date": news.get("date", ""),
-                            "keyword": news.get("keyword", ""),
-                            "press_analysis": news.get("press", "언론사 정보 없음"),
-                            "selection_reason": fallback_reason,
-                            "importance": "보통",
-                        })
+                        if not is_duplicate:
+                            title = news.get("title", "").lower()
+                            summary = news.get("summary", "").lower()
+                            
+                            # 관련성 수준 판단
+                            competitor_keywords = [
+                                "삼정kpmg", "삼정 kpmg", "삼정회계법인", "딜로이트안진", "딜로이트 안진", 
+                                "안진회계법인", "한영ey", "한영 ey", "한영회계법인"
+                            ]
+                            has_competitor_in_title = any(keyword in title for keyword in competitor_keywords)
+                            has_competitor_in_summary = any(keyword in summary for keyword in competitor_keywords)
+                            
+                            if has_competitor_in_title:
+                                fallback_reason = f"AI 무선별 → 폴백(제목에 경쟁사 키워드 포함 자동선택 {len(selected_news_list)+1}/{fallback_count})"
+                            elif has_competitor_in_summary:
+                                fallback_reason = f"AI 무선별 → 폴백(요약에 경쟁사 키워드 포함 자동선택 {len(selected_news_list)+1}/{fallback_count})"
+                            else:
+                                fallback_reason = f"AI 무선별 → 폴백(검색키워드 기준 자동선택 {len(selected_news_list)+1}/{fallback_count})"
+                            
+                            selected_news_list.append({
+                                "title": news.get("title", "제목 없음"),
+                                "url": news.get("url", ""),
+                                "date": news.get("date", ""),
+                                "keyword": news.get("keyword", ""),
+                                "press_analysis": news.get("press", "언론사 정보 없음"),
+                                "selection_reason": fallback_reason,
+                                "importance": "보통",
+                            })
                 
                 else:
                     # 다른 카테고리 폴백 로직 (기존과 동일)

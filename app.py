@@ -427,9 +427,9 @@ def analyze_news_with_ai(news_list, category_name):
 - 가능하면 3개까지 선별하되, 같은 이슈 중복 금지 원칙을 지켜 서로 다른 이슈만 담으세요.
 - 내용 중복·이슈 중복 모두 금지.
 - 언론사명은 정확하게 표기, 선별 이유는 간단명료하게.
-- 삼일PwC 관련성이 명확한 뉴스를 우선.
 
-다음 뉴스 목록에서 삼일PwC 관련성이 명확하고 중요한 뉴스만 선별해주세요:
+
+다음 뉴스 목록에서 삼일회계법인과 관련있는 뉴스를 우선순위로 선별해주세요:
 
 {news_text}
 
@@ -632,60 +632,210 @@ def analyze_news_with_ai(news_list, category_name):
                 else:
                     fallback_count = 1  # 다른 카테고리는 1건
                 
-                # 유효언론사 목록 정의 (삼일PwC, 경쟁사는 전체 언론사 사용)
-                if category_name in ["삼일PwC", "경쟁사"]:
-                    valid_press = VALID_PRESS.copy()
-                    # 삼일PwC, 경쟁사는 모든 언론사 허용 (유효언론사 우선순위만 적용)
-                    all_press_rank = {**valid_press}
-                    # 유효언론사가 아닌 언론사들도 포함 (낮은 우선순위)
-                    for press in set(n.get("press", "") for n in news_list):
-                        if press not in all_press_rank:
-                            all_press_rank[press] = 999
-                    valid_press = all_press_rank
-                else:
-                    valid_press = VALID_PRESS
+                # 삼일PwC 폴백 로직: 삼일회계법인과 가장 관련성이 높은 뉴스 선택
+                if category_name == "삼일PwC":
+                    def samil_relevance_score(news):
+                        title = news.get("title", "").lower()
+                        summary = news.get("summary", "").lower()
+                        
+                        # 삼일PwC 관련 키워드 점수 계산
+                        samil_keywords = [
+                            "삼일pwc", "삼일회계법인", "삼일 pwc", "삼일 회계법인",
+                            "삼일p&c", "삼일 p&c", "삼일회계", "삼일 회계"
+                        ]
+                        
+                        # 제목에서 삼일PwC 키워드 발견 시 최고점
+                        title_score = 0
+                        for keyword in samil_keywords:
+                            if keyword in title:
+                                title_score = 100
+                                break
+                        
+                        # 요약에서 삼일PwC 키워드 발견 시 높은 점수
+                        summary_score = 0
+                        for keyword in samil_keywords:
+                            if keyword in summary:
+                                summary_score = 50
+                                break
+                        
+                        # 검색 키워드에서 삼일PwC 포함 시 추가 점수
+                        keyword_score = 0
+                        search_keyword = news.get("keyword", "").lower()
+                        if any(keyword in search_keyword for keyword in samil_keywords):
+                            keyword_score = 30
+                        
+                        # 언론사 점수 (유효언론사 우선)
+                        press = news.get("press", "")
+                        press_score = VALID_PRESS.get(press, 999)
+                        
+                        # 날짜 점수 (최신 우선, 문자열 비교로 충분)
+                        date_score = news.get("date", "0000-00-00")
+                        
+                        # 총점 계산 (관련성 > 언론사 > 날짜 순)
+                        total_score = (
+                            -(title_score + summary_score + keyword_score),  # 관련성 점수 (높을수록 우선)
+                            press_score,  # 언론사 점수 (낮을수록 우선)
+                            date_score   # 날짜 (최신 우선)
+                        )
+                        
+                        return total_score
+                    
+                    # 삼일PwC 관련성 기준으로 정렬하여 선택
+                    best_news = sorted(news_list, key=samil_relevance_score)[:fallback_count]
+                    
+                    # 선택된 뉴스들을 결과에 추가
+                    selected_news_list = []
+                    for i, news in enumerate(best_news):
+                        title = news.get("title", "").lower()
+                        summary = news.get("summary", "").lower()
+                        
+                        # 관련성 수준 판단
+                        samil_keywords = ["삼일pwc", "삼일회계법인", "삼일 pwc", "삼일 회계법인"]
+                        has_samil_in_title = any(keyword in title for keyword in samil_keywords)
+                        has_samil_in_summary = any(keyword in summary for keyword in samil_keywords)
+                        
+                        if has_samil_in_title:
+                            fallback_reason = f"AI 무선별 → 폴백(제목에 삼일PwC 키워드 포함 자동선택 {i+1}/{fallback_count})"
+                        elif has_samil_in_summary:
+                            fallback_reason = f"AI 무선별 → 폴백(요약에 삼일PwC 키워드 포함 자동선택 {i+1}/{fallback_count})"
+                        else:
+                            fallback_reason = f"AI 무선별 → 폴백(검색키워드 기준 자동선택 {i+1}/{fallback_count})"
+                        
+                        selected_news_list.append({
+                            "title": news.get("title", "제목 없음"),
+                            "url": news.get("url", ""),
+                            "date": news.get("date", ""),
+                            "keyword": news.get("keyword", ""),
+                            "press_analysis": news.get("press", "언론사 정보 없음"),
+                            "selection_reason": fallback_reason,
+                            "importance": "보통",
+                        })
                 
-                def score(n):
-                    p = n.get("press", "")
-                    # 유효언론사가 아니면 최하위 점수 부여 (삼일PwC, 경쟁사 제외)
-                    if category_name not in ["삼일PwC", "경쟁사"] and p not in valid_press:
-                        return (999, n.get("date", "0000-00-00"))
-                    return (valid_press.get(p, 999),  # 언론사 점수 낮을수록 우선
-                            n.get("date", "0000-00-00"))  # 날짜 최신 우선(문자열 비교 OK: YYYY-MM-DD)
-
-                # 2) 필터링 후 정렬
-                if category_name in ["삼일PwC", "경쟁사"]:
-                    # 삼일PwC, 경쟁사는 전체 뉴스에서 선택
-                    filtered_news = news_list
+                elif category_name == "경쟁사":
+                    # 경쟁사 폴백 로직: 삼정KPMG, 딜로이트안진, 한영EY와 가장 관련성이 높은 뉴스 선택
+                    def competitor_relevance_score(news):
+                        title = news.get("title", "").lower()
+                        summary = news.get("summary", "").lower()
+                        
+                        # 경쟁사 회계법인 관련 키워드 점수 계산
+                        competitor_keywords = [
+                            # 삼정KPMG
+                            "삼정kpmg", "삼정 kpmg", "삼정회계법인", "삼정 회계법인", "삼정회계", "삼정 회계",
+                            # 딜로이트안진
+                            "딜로이트안진", "딜로이트 안진", "안진회계법인", "안진 회계법인", "안진회계", "안진 회계",
+                            # 한영EY
+                            "한영ey", "한영 ey", "한영회계법인", "한영 회계법인", "한영회계", "한영 회계",
+                            # 기타 경쟁사
+                            "kpmg", "deloitte", "ey", "ernst", "young", "pwc", "pricewaterhouse"
+                        ]
+                        
+                        # 제목에서 경쟁사 키워드 발견 시 최고점
+                        title_score = 0
+                        for keyword in competitor_keywords:
+                            if keyword in title:
+                                title_score = 100
+                                break
+                        
+                        # 요약에서 경쟁사 키워드 발견 시 높은 점수
+                        summary_score = 0
+                        for keyword in competitor_keywords:
+                            if keyword in summary:
+                                summary_score = 50
+                                break
+                        
+                        # 검색 키워드에서 경쟁사 포함 시 추가 점수
+                        keyword_score = 0
+                        search_keyword = news.get("keyword", "").lower()
+                        if any(keyword in search_keyword for keyword in competitor_keywords):
+                            keyword_score = 30
+                        
+                        # 언론사 점수 (유효언론사 우선)
+                        press = news.get("press", "")
+                        press_score = VALID_PRESS.get(press, 999)
+                        
+                        # 날짜 점수 (최신 우선, 문자열 비교로 충분)
+                        date_score = news.get("date", "0000-00-00")
+                        
+                        # 총점 계산 (관련성 > 언론사 > 날짜 순)
+                        total_score = (
+                            -(title_score + summary_score + keyword_score),  # 관련성 점수 (높을수록 우선)
+                            press_score,  # 언론사 점수 (낮을수록 우선)
+                            date_score   # 날짜 (최신 우선)
+                        )
+                        
+                        return total_score
+                    
+                    # 경쟁사 관련성 기준으로 정렬하여 선택
+                    best_news = sorted(news_list, key=competitor_relevance_score)[:fallback_count]
+                    
+                    # 선택된 뉴스들을 결과에 추가
+                    selected_news_list = []
+                    for i, news in enumerate(best_news):
+                        title = news.get("title", "").lower()
+                        summary = news.get("summary", "").lower()
+                        
+                        # 관련성 수준 판단
+                        competitor_keywords = [
+                            "삼정kpmg", "삼정 kpmg", "삼정회계법인", "딜로이트안진", "딜로이트 안진", 
+                            "안진회계법인", "한영ey", "한영 ey", "한영회계법인"
+                        ]
+                        has_competitor_in_title = any(keyword in title for keyword in competitor_keywords)
+                        has_competitor_in_summary = any(keyword in summary for keyword in competitor_keywords)
+                        
+                        if has_competitor_in_title:
+                            fallback_reason = f"AI 무선별 → 폴백(제목에 경쟁사 키워드 포함 자동선택 {i+1}/{fallback_count})"
+                        elif has_competitor_in_summary:
+                            fallback_reason = f"AI 무선별 → 폴백(요약에 경쟁사 키워드 포함 자동선택 {i+1}/{fallback_count})"
+                        else:
+                            fallback_reason = f"AI 무선별 → 폴백(검색키워드 기준 자동선택 {i+1}/{fallback_count})"
+                        
+                        selected_news_list.append({
+                            "title": news.get("title", "제목 없음"),
+                            "url": news.get("url", ""),
+                            "date": news.get("date", ""),
+                            "keyword": news.get("keyword", ""),
+                            "press_analysis": news.get("press", "언론사 정보 없음"),
+                            "selection_reason": fallback_reason,
+                            "importance": "보통",
+                        })
+                
                 else:
+                    # 다른 카테고리 폴백 로직 (기존과 동일)
+                    valid_press = VALID_PRESS
+                    
+                    def score(n):
+                        p = n.get("press", "")
+                        # 유효언론사가 아니면 최하위 점수 부여
+                        if p not in valid_press:
+                            return (999, n.get("date", "0000-00-00"))
+                        return (valid_press.get(p, 999),  # 언론사 점수 낮을수록 우선
+                                n.get("date", "0000-00-00"))  # 날짜 최신 우선(문자열 비교 OK: YYYY-MM-DD)
+
                     # 다른 카테고리는 유효언론사만 필터링
                     filtered_news = [n for n in news_list if n.get("press", "") in VALID_PRESS]
-                
-                if filtered_news:
-                    # 상위 N건 선택
-                    best_news = sorted(filtered_news, key=score)[:fallback_count]
-                else:
-                    # 필터링된 뉴스가 없으면 전체에서 최상위 선택
-                    best_news = sorted(news_list, key=lambda x: (999, x.get("date", "0000-00-00")))[:fallback_count]
-
-                # 선택된 뉴스들을 결과에 추가
-                selected_news_list = []
-                for i, news in enumerate(best_news):
-                    is_valid_press = news.get("press", "") in VALID_PRESS
-                    if category_name in ["삼일PwC", "경쟁사"]:
-                        fallback_reason = f"AI 무선별 → 폴백(전체언론사/최신성 기준 자동선택 {i+1}/{fallback_count})"
-                    else:
-                        fallback_reason = f"AI 무선별 → 폴백(유효언론사/최신성 기준 자동선택 {i+1}/{fallback_count})" if is_valid_press else f"AI 무선별 → 폴백(전체언론사/최신성 기준 자동선택 {i+1}/{fallback_count})"
                     
-                    selected_news_list.append({
-                        "title": news.get("title", "제목 없음"),
-                        "url": news.get("url", ""),
-                        "date": news.get("date", ""),
-                        "keyword": news.get("keyword", ""),
-                        "press_analysis": news.get("press", "언론사 정보 없음"),
-                        "selection_reason": fallback_reason,
-                        "importance": "보통",
-                    })
+                    if filtered_news:
+                        # 상위 N건 선택
+                        best_news = sorted(filtered_news, key=score)[:fallback_count]
+                    else:
+                        # 필터링된 뉴스가 없으면 전체에서 최상위 선택
+                        best_news = sorted(news_list, key=lambda x: (999, x.get("date", "0000-00-00")))[:fallback_count]
+
+                    # 선택된 뉴스들을 결과에 추가
+                    selected_news_list = []
+                    for i, news in enumerate(best_news):
+                        is_valid_press = news.get("press", "") in VALID_PRESS
+                        fallback_reason = f"AI 무선별 → 폴백(유효언론사/최신성 기준 자동선택 {i+1}/{fallback_count})" if is_valid_press else f"AI 무선별 → 폴백(전체언론사/최신성 기준 자동선택 {i+1}/{fallback_count})"
+                        
+                        selected_news_list.append({
+                            "title": news.get("title", "제목 없음"),
+                            "url": news.get("url", ""),
+                            "date": news.get("date", ""),
+                            "keyword": news.get("keyword", ""),
+                            "press_analysis": news.get("press", "언론사 정보 없음"),
+                            "selection_reason": fallback_reason,
+                            "importance": "보통",
+                        })
                 
                 parsed_result = {
                     "selected_news": selected_news_list,

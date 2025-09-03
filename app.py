@@ -205,16 +205,8 @@ def collect_news_from_naver_api(category_keywords, start_dt, end_dt, category_na
                 
 
                 
-                # 날짜 및 시간 범위 확인 (카테고리별 다르게 적용)
-                if category_name in ["삼일PwC", "경쟁사"]:
-                    # 삼일PwC, 경쟁사: 날짜만 비교 (시간 무시)
-                    pub_date_only = pub_date.date()
-                    start_date_only = start_dt.date()
-                    end_date_only = end_dt.date()
-                    date_in_range = start_date_only <= pub_date_only <= end_date_only
-                else:
-                    # 다른 카테고리: 시간까지 비교
-                    date_in_range = start_dt <= pub_date <= end_dt
+                # 날짜 및 시간 범위 확인 (모든 카테고리에서 시간 필터 적용)
+                date_in_range = start_dt <= pub_date <= end_dt
                 
                 if date_in_range:
                     date_filtered_count += 1
@@ -830,19 +822,21 @@ def main():
     now = datetime.now(KST)
     default_start = now - timedelta(days=1)
     
+    # 시작일과 시작시간을 묶어서 표시
+    st.sidebar.markdown("#### 🟢 시작")
     col1, col2 = st.sidebar.columns(2)
     with col1:
         start_date = st.date_input("시작일", value=default_start.date())
     with col2:
-        end_date = st.date_input("종료일", value=now.date())
+        start_time = st.time_input("시작 시간", value=time(10, 0), help="기본값: 오전 10시")
     
-    # 시간 선택 추가
-    st.sidebar.markdown("#### ⏰ 시간 범위")
+    # 종료일과 종료시간을 묶어서 표시
+    st.sidebar.markdown("#### 🔴 종료")
     col3, col4 = st.sidebar.columns(2)
     with col3:
-        start_time = st.time_input("시작 시간", value=time(0, 0), help="기본값: 오전 12시 (자정)")
+        end_date = st.date_input("종료일", value=now.date())
     with col4:
-        end_time = st.time_input("종료 시간", value=time(23, 59), help="기본값: 오후 11시 59분")
+        end_time = st.time_input("종료 시간", value=time(10, 0), help="기본값: 오전 10시")
     
     # 카테고리 선택
     st.sidebar.markdown("### 🏷️ 분석할 카테고리")

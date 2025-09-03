@@ -603,7 +603,7 @@ def analyze_news_with_ai(news_list, category_name):
             if (not parsed_result.get("selected_news")) and news_list:
                 # 카테고리별 폴백 개수 설정
                 if category_name == "삼일PwC":
-                    fallback_count = 1  # 삼일PwC는 1건
+                    fallback_count = 2  # 삼일PwC는 2건
                 elif category_name == "경쟁사":
                     fallback_count = 2  # 경쟁사는 2건
                 else:
